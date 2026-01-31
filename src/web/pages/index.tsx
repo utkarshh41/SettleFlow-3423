@@ -941,17 +941,48 @@ export default function Index() {
 
               {/* Loading State */}
               {isLoadingDetails && (
-                <Card className="border-2 overflow-hidden">
+                <Card className="border-2 border-primary/20 overflow-hidden bg-gradient-to-br from-primary/5 via-transparent to-transparent">
                   <CardContent className="p-12 text-center">
-                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                      <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
+                    <div className="relative mb-8">
+                      {/* Animated AI Brain */}
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 flex items-center justify-center mx-auto relative">
+                        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-primary/30 to-primary/10 animate-pulse" />
+                        <div className="absolute inset-2 rounded-full bg-gradient-to-r from-primary/40 to-primary/20 animate-ping" />
+                        <div className="relative">
+                          <Sparkles className="w-10 h-10 text-primary animate-pulse" />
+                        </div>
+                      </div>
+
+                      {/* Floating particles */}
+                      <div
+                        className="absolute -top-2 -left-4 w-2 h-2 bg-primary/40 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      />
+                      <div
+                        className="absolute -top-4 -right-2 w-1 h-1 bg-primary/30 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.5s" }}
+                      />
+                      <div
+                        className="absolute -bottom-2 left-2 w-1.5 h-1.5 bg-primary/35 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.8s" }}
+                      />
+                      <div
+                        className="absolute -bottom-4 right-4 w-1 h-1 bg-primary/25 rounded-full animate-bounce"
+                        style={{ animationDelay: "1.1s" }}
+                      />
                     </div>
-                    <h3 className="text-lg font-semibold text-foreground mb-2">
-                      Loading Invoice Details
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Fetching detailed analysis from server...
-                    </p>
+
+                    <div className="space-y-3">
+                      <h3 className="text-xl font-semibold text-foreground mb-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        AI Analyzing Invoice
+                      </h3>
+                      <p
+                        className="text-sm text-muted-foreground animate-in fade-in slide-in-from-bottom-2 duration-500"
+                        style={{ animationDelay: "0.1s" }}
+                      >
+                        Processing document with advanced intelligence...
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
               )}
