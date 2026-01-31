@@ -18,6 +18,14 @@ export interface ApiInvoice {
   customer_name: string;
 }
 
+export interface ApiCustomer {
+  id: number;
+  customer_name: string;
+  email: string | null;
+  total_outstanding_amount: number;
+  rating: "GOOD" | "AVERAGE" | "POOR";
+}
+
 // Types
 export type InvoiceStatus =
   | "draft"
@@ -280,6 +288,8 @@ interface AppContextType {
   activities: Activity[];
   isLoading: boolean;
   apiError: string | null;
+  customersLoading: boolean;
+  customersError: string | null;
 
   // Derived state
   customers: Customer[];
@@ -287,6 +297,7 @@ interface AppContextType {
 
   // Actions
   fetchInvoices: () => Promise<void>;
+  fetchCustomers: () => Promise<void>;
   addInvoice: (
     invoice: Omit<SavedInvoice, "id" | "createdAt" | "aiSuggestedAction">,
   ) => void;
@@ -309,6 +320,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [activities, setActivities] = useState<Activity[]>(initialActivities);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [customersError, setCustomersError] = useState<string | null>(null);
 
   // Derive customers from invoices
   const customers: Customer[] = (() => {
@@ -400,6 +413,44 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setInvoices(initialInvoices);
     } finally {
       setIsLoading(false);
+    }
+  }, []);
+
+  // Fetch customers from API
+  const fetchCustomers = useCallback(async () => {
+    setCustomersLoading(true);
+    setCustomersError(null);
+
+    try {
+      const response = await fetch("http://10.4.144.243:5000/customers/");
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const apiCustomers: ApiCustomer[] = await response.json();
+
+      // Convert API customers to our Customer format
+      const convertedCustomers: Customer[] = apiCustomers.map(
+        (apiCustomer) => ({
+          id: apiCustomer.id.toString(),
+          name: apiCustomer.customer_name,
+          invoiceCount: 0, // Will be calculated from invoices
+          totalOutstanding: apiCustomer.total_outstanding_amount,
+          overdueCount: 0, // Will be calculated from invoices
+        }),
+      );
+
+      // Update customers state directly (not derived from invoices)
+      // For now, we'll keep the existing derived logic but could replace it
+      // For simplicity, let's update the customers derivation to include API data
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+      setCustomersError(
+        error instanceof Error ? error.message : "Failed to fetch customers",
+      );
+    } finally {
+      setCustomersLoading(false);
     }
   }, []);
 
@@ -571,9 +622,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     activities,
     isLoading,
     apiError,
+    customersLoading,
+    customersError,
     customers,
     openTasksCount,
     fetchInvoices,
+    fetchCustomers,
     addInvoice,
     updateInvoiceStatus,
     addTask,

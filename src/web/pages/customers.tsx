@@ -1,15 +1,18 @@
 import { Sidebar } from "@/components/sidebar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Users,
   FileText,
   Building2,
   TrendingUp,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppStore, type Customer } from "@/store/app-store";
+import { useEffect } from "react";
 
 function formatCurrency(amount: number) {
   if (amount === 0) return "—";
@@ -21,14 +24,20 @@ function formatCurrency(amount: number) {
   }).format(amount);
 }
 
-function CustomerCard({ customer, index }: { customer: Customer; index: number }) {
+function CustomerCard({
+  customer,
+  index,
+}: {
+  customer: Customer;
+  index: number;
+}) {
   const hasOverdue = customer.overdueCount > 0;
   const isPaid = customer.totalOutstanding === 0;
 
   return (
     <Card
       className={cn(
-        "p-5 border transition-all hover:border-primary/40 hover:shadow-sm animate-in fade-in slide-in-from-bottom-2"
+        "p-5 border transition-all hover:border-primary/40 hover:shadow-sm animate-in fade-in slide-in-from-bottom-2",
       )}
       style={{ animationDelay: `${index * 50}ms`, animationDuration: "350ms" }}
     >
@@ -41,8 +50,8 @@ function CustomerCard({ customer, index }: { customer: Customer; index: number }
               hasOverdue
                 ? "bg-fintech-danger/10"
                 : isPaid
-                ? "bg-fintech-success/10"
-                : "bg-fintech-blue-light"
+                  ? "bg-fintech-success/10"
+                  : "bg-fintech-blue-light",
             )}
           >
             <Building2
@@ -51,8 +60,8 @@ function CustomerCard({ customer, index }: { customer: Customer; index: number }
                 hasOverdue
                   ? "text-fintech-danger"
                   : isPaid
-                  ? "text-fintech-success"
-                  : "text-fintech-blue"
+                    ? "text-fintech-success"
+                    : "text-fintech-blue",
               )}
             />
           </div>
@@ -64,7 +73,8 @@ function CustomerCard({ customer, index }: { customer: Customer; index: number }
               <div className="flex items-center gap-1.5">
                 <FileText className="w-3 h-3" />
                 <span>
-                  {customer.invoiceCount} invoice{customer.invoiceCount !== 1 ? "s" : ""}
+                  {customer.invoiceCount} invoice
+                  {customer.invoiceCount !== 1 ? "s" : ""}
                 </span>
               </div>
               {hasOverdue && (
@@ -89,8 +99,8 @@ function CustomerCard({ customer, index }: { customer: Customer; index: number }
               hasOverdue
                 ? "text-fintech-danger"
                 : isPaid
-                ? "text-fintech-success"
-                : "text-foreground"
+                  ? "text-fintech-success"
+                  : "text-foreground",
             )}
           >
             {formatCurrency(customer.totalOutstanding)}
@@ -110,14 +120,22 @@ function CustomerCard({ customer, index }: { customer: Customer; index: number }
 }
 
 export default function CustomersPage() {
-  const { customers } = useAppStore();
+  const { customers, customersLoading, customersError, fetchCustomers } =
+    useAppStore();
+
+  // Fetch customers on component mount
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   const totalCustomers = customers.length;
   const totalOutstanding = customers.reduce(
     (sum, c) => sum + c.totalOutstanding,
-    0
+    0,
   );
-  const customersWithOverdue = customers.filter((c) => c.overdueCount > 0).length;
+  const customersWithOverdue = customers.filter(
+    (c) => c.overdueCount > 0,
+  ).length;
 
   return (
     <div className="flex h-screen bg-background">
@@ -137,7 +155,9 @@ export default function CustomersPage() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-fintech-blue-light text-fintech-blue">
               <Users className="w-4 h-4" />
-              <span className="text-sm font-medium">{totalCustomers} Customers</span>
+              <span className="text-sm font-medium">
+                {totalCustomers} Customers
+              </span>
             </div>
           </div>
         </header>
@@ -150,7 +170,9 @@ export default function CustomersPage() {
                 <TrendingUp className="w-5 h-5 text-fintech-blue" />
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">Total Outstanding</div>
+                <div className="text-xs text-muted-foreground">
+                  Total Outstanding
+                </div>
                 <div className="text-lg font-mono font-semibold text-foreground">
                   {formatCurrency(totalOutstanding)}
                 </div>
@@ -162,9 +184,12 @@ export default function CustomersPage() {
                 <AlertCircle className="w-5 h-5 text-fintech-danger" />
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">With Overdue</div>
+                <div className="text-xs text-muted-foreground">
+                  With Overdue
+                </div>
                 <div className="text-lg font-semibold text-foreground">
-                  {customersWithOverdue} customer{customersWithOverdue !== 1 ? "s" : ""}
+                  {customersWithOverdue} customer
+                  {customersWithOverdue !== 1 ? "s" : ""}
                 </div>
               </div>
             </div>
@@ -174,10 +199,38 @@ export default function CustomersPage() {
         {/* Content */}
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-3xl mx-auto">
-            {customers.length > 0 ? (
+            {customersLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-muted-foreground">Loading customers...</p>
+                </div>
+              </div>
+            ) : customersError ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-4 max-w-md text-center">
+                  <AlertCircle className="w-8 h-8 text-destructive" />
+                  <div>
+                    <p className="text-destructive font-medium">
+                      Failed to load customers
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {customersError}
+                    </p>
+                  </div>
+                  <Button onClick={fetchCustomers} variant="outline" size="sm">
+                    Try Again
+                  </Button>
+                </div>
+              </div>
+            ) : customers.length > 0 ? (
               <div className="space-y-3">
                 {customers.map((customer, index) => (
-                  <CustomerCard key={customer.id} customer={customer} index={index} />
+                  <CustomerCard
+                    key={customer.id}
+                    customer={customer}
+                    index={index}
+                  />
                 ))}
               </div>
             ) : (
