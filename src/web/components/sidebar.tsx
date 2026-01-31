@@ -8,6 +8,7 @@ import {
   Sparkles,
   Settings,
   HelpCircle,
+  Mail,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -44,6 +45,7 @@ export function Sidebar() {
       badge: openTasksCount,
     },
     { label: "Activity", href: "/activity", icon: Activity },
+    { label: "Reply as customer", href: "/customer-emails", icon: Mail },
   ];
 
   return (
