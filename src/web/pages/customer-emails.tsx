@@ -3,39 +3,47 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Mail, User, Clock, Send, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
+
+interface Toast {
+  id: string;
+  type: "success" | "error";
+  message: string;
+}
 
 interface CustomerEmail {
   id: string;
   subject: string;
   body: string;
+  output: string;
 }
 
 const sampleEmails: CustomerEmail[] = [
   {
     id: "email-001",
-    subject: "Payment Reminder - Invoice INV-2024-0842",
-    body: "Dear Acme Corp,\n\nThis is a friendly reminder that your invoice INV-2024-0842 for ₹45,000 is now overdue. The payment was due on January 15, 2024.\n\nPlease process the payment at your earliest convenience to avoid any late payment charges.\n\nIf you have already made the payment, please disregard this email.\n\nBest regards,\nSettleFlow Collections Team",
+    subject: "Re: Payment regarding invoice INV-2024-001",
+    body: "Hi, Apologies for the late reply here. We will close and make the payment by 12-Feb for INV-2024-001",
+    output: "Should update expected payment date for INV-2024-001 to 12-Feb",
   },
   {
     id: "email-002",
-    subject: "Follow-up on Outstanding Payment",
-    body: "Hello Beta Ltd,\n\nWe're following up on the outstanding payment for invoice INV-2024-0845 amounting to ₹12,000.\n\nThe due date is approaching (February 1, 2024). Please ensure timely payment to maintain your good payment record.\n\nThank you for your prompt attention to this matter.\n\nRegards,\nCollections Team",
+    subject: "Re: Payment regarding invoice INV-2024-002",
+    body: "Payment for invoice INV-2024-002 is already via UTR NEFT-HDFC009812131.",
+    output:
+      "Should update expected paid amount for INV-2024-002 and mark it fully paid",
   },
   {
     id: "email-003",
-    subject: "Urgent: Overdue Payment Notice",
-    body: "Dear TechVentures Pvt,\n\nYour invoice INV-2024-0839 for ₹78,500 is significantly overdue. The payment was due on January 20, 2024.\n\nImmediate action is required to settle this payment. Please contact us if you're facing any issues with the payment process.\n\nFailure to make payment may result in additional charges and affect your credit standing.\n\nSincerely,\nSettleFlow Collections",
+    subject: "Re: Payment regarding invoice INV-2024-003",
+    body: "Please correct the GST and re share the invoice for INV-2024-003.",
+    output: "Should create a task against invoice INV-2024-003",
   },
   {
     id: "email-004",
-    subject: "Payment Confirmation Request",
-    body: "Hello Global Solutions,\n\nWe're writing to confirm the status of your payment for invoice INV-2024-0851 (₹156,000) due on February 10, 2024.\n\nPlease let us know if you've already initiated the payment or if you need any assistance with the payment process.\n\nWe value your business and are here to help.\n\nBest regards,\nCustomer Support Team",
-  },
-  {
-    id: "email-005",
-    subject: "Final Payment Reminder",
-    body: "Dear Metro Distributors,\n\nThis is the final reminder for your overdue payment of ₹89,000 for invoice INV-2024-0848.\n\nThe payment was due on January 25, 2024 and is now significantly overdue. Please arrange for immediate payment to avoid further action.\n\nIf you're experiencing financial difficulties, please contact us to discuss payment arrangements.\n\nUrgent attention required.\n\nCollections Department",
+    subject: "Re: Payment regarding invoice INV-2024-004",
+    body: "We have not made any such purchase. Please revert invoice INV-2024-004 or issue a credit note.",
+    output: "Should create a task against invoice INV-2024-004",
   },
 ];
 
@@ -94,20 +102,66 @@ export default function CustomerEmailsPage() {
     null,
   );
   const [isSending, setIsSending] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+
+  const showToast = (type: "success" | "error", message: string) => {
+    const newToast: Toast = {
+      id: Date.now().toString(),
+      type,
+      message,
+    };
+    setToast(newToast);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const handleSendEmail = async () => {
     if (!selectedEmail) return;
 
     setIsSending(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      const response = await fetch("http://10.4.144.243:5000/gmail/webhook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: selectedEmail.id,
+          threadId: selectedEmail.id,
+          snippet: selectedEmail.body,
+          payload: {
+            mimeType: "text/plain",
+          },
+          sizeEstimate: selectedEmail.body.length,
+          historyId: Date.now().toString(),
+          internalDate: new Date().toISOString(),
+          labels: [
+            {
+              id: "sent",
+              name: "SENT",
+            },
+          ],
+          From: "customer@example.com",
+          Subject: selectedEmail.subject,
+          To: "settleflow@example.com",
+        }),
+      });
 
-    setIsSending(false);
-    setSelectedEmail(null);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-    // Here you would show a success toast
-    console.log("Email sent successfully");
+      showToast("success", "Email sent successfully");
+      setSelectedEmail(null);
+    } catch (error) {
+      console.error("Error sending email:", error);
+      showToast(
+        "error",
+        error instanceof Error ? error.message : "Failed to send email",
+      );
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -122,8 +176,8 @@ export default function CustomerEmailsPage() {
               Reply as customer
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Try on these sample emails on behalf of your customers and see how
-              system behaves
+              Try these sample emails on behalf of your customers and see how
+              the system behaves
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -175,6 +229,24 @@ export default function CustomerEmailsPage() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {selectedEmail.output && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-green-800 mb-1">
+                        Expected Action
+                      </p>
+                      <p className="text-sm text-green-700">
+                        {selectedEmail.output}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="text-sm font-medium text-foreground mb-2 block">
                   Subject
@@ -221,6 +293,27 @@ export default function CustomerEmailsPage() {
                 )}
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-6 right-6 z-[9999] animate-in slide-in-from-top-4 duration-300">
+          <div
+            className={cn(
+              "px-4 py-3 rounded-lg shadow-lg border flex items-center gap-3 min-w-[300px]",
+              toast.type === "success"
+                ? "bg-green-50 border-green-200 text-green-800"
+                : "bg-red-50 border-red-200 text-red-800",
+            )}
+          >
+            {toast.type === "success" ? (
+              <Send className="w-4 h-4" />
+            ) : (
+              <X className="w-4 h-4" />
+            )}
+            <span className="text-sm font-medium">{toast.message}</span>
           </div>
         </div>
       )}
