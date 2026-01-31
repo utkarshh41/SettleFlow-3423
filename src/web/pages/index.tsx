@@ -12,6 +12,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Upload,
   FileText,
   Sparkles,
@@ -28,6 +36,11 @@ import {
   List,
   Plus,
   ChevronRight,
+  MessageSquare,
+  CheckCheck,
+  Send,
+  X,
+  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -81,7 +94,7 @@ const statusConfig: Record<InvoiceStatus, { label: string; className: string }> 
 };
 
 // Sample saved invoices data
-const sampleInvoices: SavedInvoice[] = [
+const initialInvoices: SavedInvoice[] = [
   {
     id: "inv-001",
     customerName: "Acme Corp",
@@ -171,6 +184,45 @@ function simulateAIAnalysis(): Promise<ExtractedInvoice> {
   });
 }
 
+function getAIRecommendationMessage(invoice: SavedInvoice): string {
+  switch (invoice.status) {
+    case "overdue":
+      return `This invoice is overdue. The next best action is to send a payment reminder email to ${invoice.customerName}.`;
+    case "due_tomorrow":
+      return `This invoice is due tomorrow. Consider sending a friendly reminder to ${invoice.customerName} to ensure timely payment.`;
+    case "sent":
+      return `This invoice has been sent and is not yet due. No immediate action required.`;
+    case "paid":
+      return `This invoice has been paid. Thank ${invoice.customerName} for their timely payment.`;
+    default:
+      return `Review this invoice and take appropriate action based on the current status.`;
+  }
+}
+
+function generatePaymentReminderEmail(invoice: SavedInvoice): string {
+  return `Subject: Payment Reminder - Invoice ${invoice.invoiceNumber}
+
+Dear ${invoice.customerName},
+
+I hope this message finds you well. This is a friendly reminder regarding the outstanding invoice ${invoice.invoiceNumber} for the amount of ${formatCurrency(invoice.amount)}.
+
+The payment was due on ${formatDate(invoice.dueDate)}. We kindly request you to arrange the payment at your earliest convenience.
+
+Invoice Details:
+• Invoice Number: ${invoice.invoiceNumber}
+• Amount Due: ${formatCurrency(invoice.amount)}
+• Due Date: ${formatDate(invoice.dueDate)}
+
+If you have already made the payment, please disregard this reminder. Should you have any questions or need to discuss payment arrangements, please don't hesitate to reach out.
+
+Thank you for your prompt attention to this matter.
+
+Best regards,
+John Doe
+Collections Manager
+AI Collection`;
+}
+
 function ActionIcon({ type }: { type: SavedInvoice["aiSuggestedAction"]["type"] }) {
   switch (type) {
     case "send_email":
@@ -183,6 +235,46 @@ function ActionIcon({ type }: { type: SavedInvoice["aiSuggestedAction"]["type"] 
   }
 }
 
+// Toast notification component
+function Toast({ 
+  message, 
+  type, 
+  isVisible, 
+  onClose 
+}: { 
+  message: string; 
+  type: "success" | "info"; 
+  isVisible: boolean; 
+  onClose: () => void;
+}) {
+  if (!isVisible) return null;
+  
+  return (
+    <div 
+      className={cn(
+        "fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-lg border",
+        "animate-in slide-in-from-bottom-4 fade-in duration-300",
+        type === "success" 
+          ? "bg-fintech-success/10 border-fintech-success/30 text-fintech-success" 
+          : "bg-primary/10 border-primary/30 text-primary"
+      )}
+    >
+      {type === "success" ? (
+        <CheckCircle2 className="w-5 h-5 shrink-0" />
+      ) : (
+        <ClipboardCheck className="w-5 h-5 shrink-0" />
+      )}
+      <span className="font-medium text-sm">{message}</span>
+      <button 
+        onClick={onClose}
+        className="ml-2 p-1 rounded-md hover:bg-black/10 transition-colors"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 export default function Index() {
   const [activeTab, setActiveTab] = useState<TabState>("upload");
   const [viewState, setViewState] = useState<ViewState>("upload");
@@ -190,7 +282,24 @@ export default function Index() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [extractedData, setExtractedData] = useState<ExtractedInvoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<SavedInvoice | null>(null);
+  const [invoices, setInvoices] = useState<SavedInvoice[]>(initialInvoices);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Modal and notification states
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "info"; isVisible: boolean }>({
+    message: "",
+    type: "success",
+    isVisible: false,
+  });
+
+  const showToast = (message: string, type: "success" | "info") => {
+    setToast({ message, type, isVisible: true });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, isVisible: false }));
+    }, 4000);
+  };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -266,6 +375,47 @@ export default function Index() {
     setSelectedInvoice(null);
   };
 
+  // Invoice Detail Actions
+  const handleSendEmail = () => {
+    setIsEmailModalOpen(true);
+  };
+
+  const handleConfirmSendEmail = () => {
+    setIsSendingEmail(true);
+    // Simulate sending email
+    setTimeout(() => {
+      setIsSendingEmail(false);
+      setIsEmailModalOpen(false);
+      showToast("Payment reminder email sent successfully", "success");
+    }, 1500);
+  };
+
+  const handleSimulateCustomerReply = () => {
+    showToast("Task created: Follow up on customer reply", "info");
+  };
+
+  const handleMarkAsPaid = () => {
+    if (!selectedInvoice) return;
+    
+    // Update invoice status
+    setInvoices(prevInvoices => 
+      prevInvoices.map(inv => 
+        inv.id === selectedInvoice.id 
+          ? { ...inv, status: "paid" as InvoiceStatus, aiSuggestedAction: { type: "none" as const, label: "Completed" } }
+          : inv
+      )
+    );
+    
+    // Update selected invoice
+    setSelectedInvoice({
+      ...selectedInvoice,
+      status: "paid",
+      aiSuggestedAction: { type: "none", label: "Completed" },
+    });
+    
+    showToast("Invoice marked as paid", "success");
+  };
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
@@ -320,7 +470,7 @@ export default function Index() {
               <List className="w-4 h-4" />
               Invoice List
               <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium">
-                {sampleInvoices.length}
+                {invoices.length}
               </span>
             </button>
           </div>
@@ -581,7 +731,7 @@ export default function Index() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sampleInvoices.map((invoice, index) => (
+                  {invoices.map((invoice, index) => (
                     <TableRow
                       key={invoice.id}
                       onClick={() => handleInvoiceClick(invoice)}
@@ -649,7 +799,7 @@ export default function Index() {
           </div>
         )}
 
-        {/* Invoice Detail View */}
+        {/* Invoice Detail View - Enhanced */}
         {activeTab === "list" && selectedInvoice && (
           <div className="flex-1 p-8 overflow-auto animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="max-w-2xl mx-auto space-y-6">
@@ -663,7 +813,7 @@ export default function Index() {
                 Back to Invoice List
               </Button>
 
-              {/* Invoice Detail Card */}
+              {/* Invoice Summary Card */}
               <Card className="border-2 overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b">
                   <div className="flex items-center justify-between">
@@ -730,51 +880,141 @@ export default function Index() {
                         </p>
                       </div>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                    {/* AI Suggested Action */}
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                        <Sparkles className="w-5 h-5 text-muted-foreground" />
+              {/* AI Recommendation Card */}
+              <Card className={cn(
+                "border-2 overflow-hidden relative",
+                selectedInvoice.status === "overdue" && "border-fintech-danger/30 bg-fintech-danger/5",
+                selectedInvoice.status === "due_tomorrow" && "border-fintech-warning/30 bg-fintech-warning/5",
+                selectedInvoice.status === "paid" && "border-fintech-success/30 bg-fintech-success/5"
+              )}>
+                <CardContent className="p-6">
+                  <div className="flex gap-4">
+                    <div className={cn(
+                      "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
+                      selectedInvoice.status === "overdue" && "bg-fintech-danger/10",
+                      selectedInvoice.status === "due_tomorrow" && "bg-fintech-warning/10",
+                      selectedInvoice.status === "paid" && "bg-fintech-success/10",
+                      selectedInvoice.status === "sent" && "bg-primary/10",
+                      selectedInvoice.status === "draft" && "bg-muted"
+                    )}>
+                      <Sparkles className={cn(
+                        "w-6 h-6",
+                        selectedInvoice.status === "overdue" && "text-fintech-danger",
+                        selectedInvoice.status === "due_tomorrow" && "text-fintech-warning",
+                        selectedInvoice.status === "paid" && "text-fintech-success",
+                        selectedInvoice.status === "sent" && "text-primary",
+                        selectedInvoice.status === "draft" && "text-muted-foreground"
+                      )} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-semibold text-foreground">AI Recommendation</h3>
+                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                          Smart Insight
+                        </Badge>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                          AI Suggested Action
-                        </p>
-                        <div
-                          className={cn(
-                            "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm",
-                            selectedInvoice.aiSuggestedAction.type === "none"
-                              ? "text-muted-foreground bg-muted"
-                              : selectedInvoice.aiSuggestedAction.type === "call_customer"
-                              ? "text-fintech-warning bg-fintech-warning/10"
-                              : "text-primary bg-primary/10"
-                          )}
-                        >
-                          <ActionIcon type={selectedInvoice.aiSuggestedAction.type} />
-                          <span className="font-medium">{selectedInvoice.aiSuggestedAction.label}</span>
-                        </div>
-                      </div>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {getAIRecommendationMessage(selectedInvoice)}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
               {/* Action Buttons */}
-              {selectedInvoice.aiSuggestedAction.type !== "none" && (
-                <div className="flex gap-3">
-                  <Button className="flex-1 h-12 rounded-xl gap-2">
-                    <ActionIcon type={selectedInvoice.aiSuggestedAction.type} />
-                    {selectedInvoice.aiSuggestedAction.label}
-                  </Button>
-                  <Button variant="outline" className="h-12 rounded-xl">
-                    Mark as Paid
-                  </Button>
-                </div>
-              )}
+              <div className="flex gap-3">
+                <Button 
+                  className="flex-1 h-12 rounded-xl gap-2"
+                  onClick={handleSendEmail}
+                  disabled={selectedInvoice.status === "paid"}
+                >
+                  <Mail className="w-4 h-4" />
+                  Send Email
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex-1 h-12 rounded-xl gap-2"
+                  onClick={handleSimulateCustomerReply}
+                  disabled={selectedInvoice.status === "paid"}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Simulate Customer Reply
+                </Button>
+                <Button 
+                  className="h-12 rounded-xl gap-2 bg-fintech-success hover:bg-fintech-success/90 text-white"
+                  onClick={handleMarkAsPaid}
+                  disabled={selectedInvoice.status === "paid"}
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  Mark as Paid
+                </Button>
+              </div>
             </div>
           </div>
         )}
       </main>
+
+      {/* Email Modal */}
+      <Dialog open={isEmailModalOpen} onOpenChange={setIsEmailModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Mail className="w-5 h-5 text-primary" />
+              </div>
+              Payment Reminder Email
+            </DialogTitle>
+            <DialogDescription>
+              Review the AI-generated email before sending to {selectedInvoice?.customerName}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-auto py-4">
+            <div className="bg-muted/50 rounded-xl p-5 font-mono text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">
+              {selectedInvoice && generatePaymentReminderEmail(selectedInvoice)}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setIsEmailModalOpen(false)}
+              disabled={isSendingEmail}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmSendEmail}
+              disabled={isSendingEmail}
+              className="gap-2"
+            >
+              {isSendingEmail ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Send Email
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        isVisible={toast.isVisible}
+        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
+      />
     </div>
   );
 }
