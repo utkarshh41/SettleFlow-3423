@@ -1,198 +1,157 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Sidebar } from "@/components/sidebar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Search,
-  Filter,
-  Download,
-  Plus,
-  MoreHorizontal,
-  ArrowUpDown,
-  Mail,
-  Phone,
-  Clock,
-  AlertCircle,
+  Upload,
+  FileText,
+  Sparkles,
   CheckCircle2,
-  CircleDashed,
+  Calendar,
+  User,
+  Hash,
+  IndianRupee,
+  Save,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-interface Invoice {
-  id: string;
-  customer: string;
-  company: string;
+type InvoiceStatus = "draft" | "sent" | "overdue" | "paid";
+
+interface ExtractedInvoice {
+  customerName: string;
+  invoiceNumber: string;
   amount: number;
   dueDate: string;
-  status: "paid" | "pending" | "overdue" | "partial";
-  daysPastDue: number;
-  lastContact: string;
-  contactMethod: "email" | "phone" | "none";
+  status: InvoiceStatus;
 }
 
-const invoices: Invoice[] = [
-  {
-    id: "INV-2024-001",
-    customer: "Sarah Mitchell",
-    company: "TechCorp Solutions",
-    amount: 12500.0,
-    dueDate: "2024-01-15",
-    status: "overdue",
-    daysPastDue: 22,
-    lastContact: "2 days ago",
-    contactMethod: "email",
-  },
-  {
-    id: "INV-2024-002",
-    customer: "Michael Chen",
-    company: "DataFlow Inc",
-    amount: 8750.5,
-    dueDate: "2024-02-01",
-    status: "pending",
-    daysPastDue: 0,
-    lastContact: "5 days ago",
-    contactMethod: "phone",
-  },
-  {
-    id: "INV-2024-003",
-    customer: "Emily Rodriguez",
-    company: "CloudNine Systems",
-    amount: 24000.0,
-    dueDate: "2024-01-28",
-    status: "partial",
-    daysPastDue: 9,
-    lastContact: "1 day ago",
-    contactMethod: "email",
-  },
-  {
-    id: "INV-2024-004",
-    customer: "James Wilson",
-    company: "Nexus Dynamics",
-    amount: 5200.0,
-    dueDate: "2024-01-20",
-    status: "paid",
-    daysPastDue: 0,
-    lastContact: "Today",
-    contactMethod: "email",
-  },
-  {
-    id: "INV-2024-005",
-    customer: "Lisa Thompson",
-    company: "Quantum Labs",
-    amount: 18900.0,
-    dueDate: "2024-01-10",
-    status: "overdue",
-    daysPastDue: 27,
-    lastContact: "1 week ago",
-    contactMethod: "phone",
-  },
-  {
-    id: "INV-2024-006",
-    customer: "Robert Kim",
-    company: "Apex Industries",
-    amount: 31250.0,
-    dueDate: "2024-02-15",
-    status: "pending",
-    daysPastDue: 0,
-    lastContact: "3 days ago",
-    contactMethod: "none",
-  },
-  {
-    id: "INV-2024-007",
-    customer: "Amanda Foster",
-    company: "Stellar Ventures",
-    amount: 7800.0,
-    dueDate: "2024-01-25",
-    status: "overdue",
-    daysPastDue: 12,
-    lastContact: "4 days ago",
-    contactMethod: "email",
-  },
-  {
-    id: "INV-2024-008",
-    customer: "David Park",
-    company: "Innovate Co",
-    amount: 15600.0,
-    dueDate: "2024-02-10",
-    status: "pending",
-    daysPastDue: 0,
-    lastContact: "Yesterday",
-    contactMethod: "phone",
-  },
-];
+type ViewState = "upload" | "analyzing" | "extracted" | "saved";
 
-const statusConfig = {
-  paid: {
-    label: "Paid",
-    variant: "default" as const,
-    icon: CheckCircle2,
-    className: "bg-fintech-success/10 text-fintech-success border-fintech-success/20",
-  },
-  pending: {
-    label: "Pending",
-    variant: "secondary" as const,
-    icon: CircleDashed,
+const statusConfig: Record<InvoiceStatus, { label: string; className: string }> = {
+  draft: {
+    label: "Draft",
     className: "bg-muted text-muted-foreground border-border",
+  },
+  sent: {
+    label: "Sent",
+    className: "bg-fintech-blue-light text-fintech-blue border-fintech-blue/20",
   },
   overdue: {
     label: "Overdue",
-    variant: "destructive" as const,
-    icon: AlertCircle,
-    className: "bg-fintech-danger/10 text-fintech-danger border-fintech-danger/20 animate-pulse-slow",
+    className: "bg-fintech-danger/10 text-fintech-danger border-fintech-danger/20",
   },
-  partial: {
-    label: "Partial",
-    variant: "outline" as const,
-    icon: Clock,
-    className: "bg-fintech-warning/10 text-fintech-warning border-fintech-warning/20",
+  paid: {
+    label: "Paid",
+    className: "bg-fintech-success/10 text-fintech-success border-fintech-success/20",
   },
 };
 
 function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-IN", {
     style: "currency",
-    currency: "USD",
+    currency: "INR",
     minimumFractionDigits: 2,
   }).format(amount);
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    month: "short",
+  return new Date(dateString).toLocaleDateString("en-IN", {
     day: "numeric",
+    month: "short",
     year: "numeric",
   });
 }
 
+// Simulated AI analysis - in production this would call an actual API
+function simulateAIAnalysis(): Promise<ExtractedInvoice> {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const invoiceData: ExtractedInvoice = {
+        customerName: "Reliance Industries Ltd",
+        invoiceNumber: "INV-2024-0847",
+        amount: 245000.50,
+        dueDate: "2024-02-15",
+        status: "sent",
+      };
+      resolve(invoiceData);
+    }, 2500);
+  });
+}
+
 export default function Index() {
-  const [selectedFilter, setSelectedFilter] = useState<string>("all");
+  const [viewState, setViewState] = useState<ViewState>("upload");
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [extractedData, setExtractedData] = useState<ExtractedInvoice | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredInvoices =
-    selectedFilter === "all"
-      ? invoices
-      : invoices.filter((inv) => inv.status === selectedFilter);
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
 
-  const totalOutstanding = invoices
-    .filter((inv) => inv.status !== "paid")
-    .reduce((sum, inv) => sum + inv.amount, 0);
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
 
-  const overdueCount = invoices.filter((inv) => inv.status === "overdue").length;
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      if (file.type === "application/pdf" || file.type.startsWith("image/")) {
+        setUploadedFile(file);
+      }
+    }
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setUploadedFile(files[0]);
+    }
+  }, []);
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAnalyze = async () => {
+    if (!uploadedFile) return;
+    
+    setViewState("analyzing");
+    
+    try {
+      const data = await simulateAIAnalysis();
+      setExtractedData(data);
+      setViewState("extracted");
+    } catch (error) {
+      console.error("Analysis failed:", error);
+      setViewState("upload");
+    }
+  };
+
+  const handleSave = () => {
+    // In production, this would save to the database
+    setViewState("saved");
+    
+    // Reset after showing success
+    setTimeout(() => {
+      setViewState("upload");
+      setUploadedFile(null);
+      setExtractedData(null);
+    }, 2000);
+  };
+
+  const handleReset = () => {
+    setViewState("upload");
+    setUploadedFile(null);
+    setExtractedData(null);
+  };
 
   return (
     <div className="flex h-screen bg-background">
@@ -203,264 +162,249 @@ export default function Index() {
         <header className="flex items-center justify-between px-8 py-5 border-b border-border bg-card">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Invoices
+              Invoice Upload
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Manage and track your outstanding invoices
+              Upload and analyze invoices with AI
             </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" className="gap-2">
-              <Download className="w-4 h-4" />
-              Export
-            </Button>
-            <Button size="sm" className="gap-2">
-              <Plus className="w-4 h-4" />
-              New Invoice
-            </Button>
           </div>
         </header>
 
-        {/* Stats Bar */}
-        <div className="px-8 py-4 bg-card border-b border-border">
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <span className="text-lg font-semibold text-primary">$</span>
+        {/* Main Content */}
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-2xl">
+            
+            {/* Upload State */}
+            {viewState === "upload" && (
+              <div className="space-y-6 animate-in fade-in duration-300">
+                {/* Upload Area */}
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={handleUploadClick}
+                  className={cn(
+                    "relative border-2 border-dashed rounded-2xl p-12 transition-all cursor-pointer group",
+                    isDragging
+                      ? "border-primary bg-primary/5 scale-[1.02]"
+                      : uploadedFile
+                      ? "border-fintech-success bg-fintech-success/5"
+                      : "border-border hover:border-primary/50 hover:bg-muted/30"
+                  )}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,image/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  
+                  <div className="flex flex-col items-center text-center">
+                    {uploadedFile ? (
+                      <>
+                        <div className="w-16 h-16 rounded-2xl bg-fintech-success/10 flex items-center justify-center mb-4">
+                          <FileText className="w-8 h-8 text-fintech-success" />
+                        </div>
+                        <p className="text-lg font-medium text-foreground mb-1">
+                          {uploadedFile.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {(uploadedFile.size / 1024).toFixed(1)} KB • Ready to analyze
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className={cn(
+                          "w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-all",
+                          isDragging ? "bg-primary/10" : "bg-muted group-hover:bg-primary/10"
+                        )}>
+                          <Upload className={cn(
+                            "w-8 h-8 transition-colors",
+                            isDragging ? "text-primary" : "text-muted-foreground group-hover:text-primary"
+                          )} />
+                        </div>
+                        <p className="text-lg font-medium text-foreground mb-1">
+                          Drop your invoice here
+                        </p>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          or click to browse files
+                        </p>
+                        <p className="text-xs text-muted-foreground/70">
+                          Supports PDF and image files
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Analyze Button */}
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={!uploadedFile}
+                  size="lg"
+                  className="w-full h-14 text-base font-medium gap-3 rounded-xl"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  Analyze Invoice
+                </Button>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                  Total Outstanding
+            )}
+
+            {/* Analyzing State */}
+            {viewState === "analyzing" && (
+              <div className="flex flex-col items-center justify-center py-16 animate-in fade-in duration-300">
+                <div className="relative mb-8">
+                  <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
+                    <Sparkles className="w-10 h-10 text-primary animate-pulse" />
+                  </div>
+                  <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 text-primary-foreground animate-spin" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  Analyzing invoice with AI...
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Extracting details from your document
                 </p>
-                <p className="text-lg font-semibold text-foreground font-mono">
-                  {formatCurrency(totalOutstanding)}
-                </p>
               </div>
-            </div>
+            )}
 
-            <div className="w-px h-10 bg-border" />
-
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-fintech-danger/10 flex items-center justify-center">
-                <AlertCircle className="w-5 h-5 text-fintech-danger" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                  Overdue
-                </p>
-                <p className="text-lg font-semibold text-foreground">
-                  {overdueCount} invoices
-                </p>
-              </div>
-            </div>
-
-            <div className="w-px h-10 bg-border" />
-
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-fintech-success/10 flex items-center justify-center">
-                <CheckCircle2 className="w-5 h-5 text-fintech-success" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                  Collection Rate
-                </p>
-                <p className="text-lg font-semibold text-foreground">87.3%</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Filters and Search */}
-        <div className="px-8 py-4 flex items-center justify-between bg-background">
-          <div className="flex items-center gap-2">
-            {["all", "overdue", "pending", "partial", "paid"].map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setSelectedFilter(filter)}
-                className={cn(
-                  "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
-                  selectedFilter === filter
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                )}
-              >
-                {filter.charAt(0).toUpperCase() + filter.slice(1)}
-                {filter === "overdue" && (
-                  <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-primary-foreground/20">
-                    {overdueCount}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search invoices..."
-                className="pl-9 pr-4 py-2 text-sm bg-muted/50 border border-border rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent placeholder:text-muted-foreground"
-              />
-            </div>
-            <Button variant="outline" size="sm" className="gap-2">
-              <Filter className="w-4 h-4" />
-              Filters
-            </Button>
-          </div>
-        </div>
-
-        {/* Table */}
-        <ScrollArea className="flex-1">
-          <div className="px-8 pb-8">
-            <div className="border border-border rounded-xl overflow-hidden bg-card">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="font-semibold text-foreground">
-                      <div className="flex items-center gap-1.5 cursor-pointer hover:text-primary">
-                        Invoice
-                        <ArrowUpDown className="w-3.5 h-3.5" />
+            {/* Extracted Data State */}
+            {viewState === "extracted" && extractedData && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <Card className="border-2 overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b">
+                    <CardTitle className="flex items-center gap-3 text-lg">
+                      <div className="w-10 h-10 rounded-xl bg-fintech-success/10 flex items-center justify-center">
+                        <CheckCircle2 className="w-5 h-5 text-fintech-success" />
                       </div>
-                    </TableHead>
-                    <TableHead className="font-semibold text-foreground">
-                      Customer
-                    </TableHead>
-                    <TableHead className="font-semibold text-foreground">
-                      <div className="flex items-center gap-1.5 cursor-pointer hover:text-primary">
-                        Amount
-                        <ArrowUpDown className="w-3.5 h-3.5" />
+                      Invoice Details Extracted
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="grid gap-5">
+                      {/* Customer Name */}
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <User className="w-5 h-5 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                            Customer Name
+                          </p>
+                          <p className="text-base font-semibold text-foreground">
+                            {extractedData.customerName}
+                          </p>
+                        </div>
                       </div>
-                    </TableHead>
-                    <TableHead className="font-semibold text-foreground">
-                      <div className="flex items-center gap-1.5 cursor-pointer hover:text-primary">
-                        Due Date
-                        <ArrowUpDown className="w-3.5 h-3.5" />
+
+                      {/* Invoice Number */}
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <Hash className="w-5 h-5 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                            Invoice Number
+                          </p>
+                          <p className="text-base font-mono font-semibold text-foreground">
+                            {extractedData.invoiceNumber}
+                          </p>
+                        </div>
                       </div>
-                    </TableHead>
-                    <TableHead className="font-semibold text-foreground">
-                      Status
-                    </TableHead>
-                    <TableHead className="font-semibold text-foreground">
-                      Last Contact
-                    </TableHead>
-                    <TableHead className="w-12"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredInvoices.map((invoice) => {
-                    const status = statusConfig[invoice.status];
-                    const StatusIcon = status.icon;
-                    return (
-                      <TableRow
-                        key={invoice.id}
-                        className="table-row-hover cursor-pointer"
-                      >
-                        <TableCell>
-                          <span className="font-mono text-sm font-medium text-foreground">
-                            {invoice.id}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground">
-                              {invoice.customer}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {invoice.company}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono font-semibold text-foreground">
-                            {formatCurrency(invoice.amount)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span className="text-foreground">
-                              {formatDate(invoice.dueDate)}
-                            </span>
-                            {invoice.daysPastDue > 0 && (
-                              <span className="text-xs text-fintech-danger font-medium">
-                                {invoice.daysPastDue} days past due
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={status.variant}
+
+                      {/* Amount */}
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <IndianRupee className="w-5 h-5 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                            Amount
+                          </p>
+                          <p className="text-xl font-mono font-bold text-foreground">
+                            {formatCurrency(extractedData.amount)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Due Date */}
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <Calendar className="w-5 h-5 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                            Due Date
+                          </p>
+                          <p className="text-base font-semibold text-foreground">
+                            {formatDate(extractedData.dueDate)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <AlertCircle className="w-5 h-5 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                            Status
+                          </p>
+                          <span
                             className={cn(
-                              "gap-1 font-medium border",
-                              status.className
+                              "inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border",
+                              statusConfig[extractedData.status].className
                             )}
                           >
-                            <StatusIcon className="w-3 h-3" />
-                            {status.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {invoice.contactMethod === "email" && (
-                              <Mail className="w-3.5 h-3.5 text-muted-foreground" />
-                            )}
-                            {invoice.contactMethod === "phone" && (
-                              <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                            )}
-                            <span className="text-sm text-muted-foreground">
-                              {invoice.lastContact}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                              >
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                              <DropdownMenuItem>View Details</DropdownMenuItem>
-                              <DropdownMenuItem>Send Reminder</DropdownMenuItem>
-                              <DropdownMenuItem>
-                                Schedule Follow-up
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem>Mark as Paid</DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive">
-                                Write Off
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                            {statusConfig[extractedData.status].label}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-4 px-1">
-              <p className="text-sm text-muted-foreground">
-                Showing {filteredInvoices.length} of {invoices.length} invoices
-              </p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled>
-                  Previous
-                </Button>
-                <Button variant="outline" size="sm">
-                  Next
-                </Button>
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={handleReset}
+                    className="flex-1 h-12 rounded-xl"
+                  >
+                    Upload Another
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    className="flex-1 h-12 rounded-xl gap-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save Invoice
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Saved State */}
+            {viewState === "saved" && (
+              <div className="flex flex-col items-center justify-center py-16 animate-in fade-in zoom-in-95 duration-300">
+                <div className="w-20 h-20 rounded-full bg-fintech-success/10 flex items-center justify-center mb-6">
+                  <CheckCircle2 className="w-10 h-10 text-fintech-success" />
+                </div>
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  Invoice Saved Successfully
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Customer and invoice records have been created
+                </p>
+              </div>
+            )}
+
           </div>
-        </ScrollArea>
+        </div>
       </main>
     </div>
   );
