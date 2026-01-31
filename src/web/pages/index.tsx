@@ -58,7 +58,7 @@ interface ExtractedInvoice {
   status: InvoiceStatus;
 }
 
-type ViewState = "upload" | "analyzing" | "extracted" | "saved";
+type ViewState = "upload" | "analyzing" | "extracted" | "saved" | "error";
 type TabState = "upload" | "list";
 
 const statusConfig: Record<
@@ -241,6 +241,7 @@ export default function Index() {
   const [extractedData, setExtractedData] = useState<ExtractedInvoice | null>(
     null,
   );
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<SavedInvoice | null>(
     null,
   );
@@ -353,10 +354,15 @@ export default function Index() {
       setViewState("extracted");
     } catch (error) {
       console.error("Analysis failed:", error);
-      // Fallback to mock data if API fails
-      const mockData = await simulateAIAnalysis();
-      setExtractedData(mockData);
-      setViewState("extracted");
+
+      // Show error message to user
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze invoice. Please try again.";
+
+      setErrorMessage(errorMessage);
+      setViewState("error");
     }
   };
 
@@ -644,6 +650,34 @@ export default function Index() {
                     <UploadCloudIcon className="w-4 h-4" />
                     Upload Another Invoice
                   </Button>
+                </div>
+              )}
+
+              {/* Error State */}
+              {viewState === "error" && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <Card className="border-2 border-fintech-danger/20 overflow-hidden">
+                    <CardContent className="p-8 text-center">
+                      <div className="w-16 h-16 rounded-full bg-fintech-danger/10 flex items-center justify-center mx-auto mb-4">
+                        <AlertCircle className="w-8 h-8 text-fintech-danger" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-foreground mb-2">
+                        Invoice Analysis Failed!
+                      </h3>
+                      <p className="text-muted-foreground mb-4">
+                        {errorMessage ||
+                          "An error occurred while processing your invoice."}
+                      </p>
+                      <Button
+                        onClick={handleReset}
+                        variant="outline"
+                        className="gap-2"
+                      >
+                        <UploadCloudIcon className="w-4 h-4" />
+                        Try Again
+                      </Button>
+                    </CardContent>
+                  </Card>
                 </div>
               )}
 
