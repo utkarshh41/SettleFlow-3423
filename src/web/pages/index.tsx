@@ -252,7 +252,7 @@ export default function Index() {
     markInvoiceAsPaid,
   } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<TabState>("upload");
+  const [activeTab, setActiveTab] = useState<TabState>("list");
   const [viewState, setViewState] = useState<ViewState>("upload");
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -341,10 +341,16 @@ export default function Index() {
       const formData = new FormData();
       formData.append("file", uploadedFile);
 
-      const response = await fetch("http://10.4.144.243:5000/parse/", {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        "https://cdc9cd9a6e2d.ngrok-free.app/parse",
+        {
+          method: "POST",
+          body: formData,
+          headers: {
+            "ngrok-skip-browser-warning": "true",
+          },
+        },
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -428,9 +434,12 @@ export default function Index() {
 
     try {
       const response = await fetch(
-        `http://10.4.144.243:5000/analyze/invoice/${invoice.invoiceNumber}`,
+        `https://cdc9cd9a6e2d.ngrok-free.app/analyze/invoice/${invoice.invoiceNumber}`,
         {
           method: "POST",
+          headers: {
+            "ngrok-skip-browser-warning": "true",
+          },
         },
       );
 
@@ -509,16 +518,20 @@ export default function Index() {
     setIsSendingAiSuggestion(true);
 
     try {
-      const response = await fetch("http://10.4.144.243:5000/email/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        "https://cdc9cd9a6e2d.ngrok-free.app/email/send",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true",
+          },
+          body: JSON.stringify({
+            subject: detailedInvoice.email_subject,
+            body: detailedInvoice.email_body,
+          }),
         },
-        body: JSON.stringify({
-          subject: detailedInvoice.email_subject,
-          body: detailedInvoice.email_body,
-        }),
-      });
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -570,23 +583,8 @@ export default function Index() {
         </header>
 
         {/* Tabs */}
-        <div className="px-8 pt-4 bg-card border-b border-border">
-          <div className="flex gap-1">
-            <button
-              onClick={() => {
-                setActiveTab("upload");
-                setSelectedInvoice(null);
-              }}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all border-b-2 -mb-px",
-                activeTab === "upload"
-                  ? "bg-background border-primary text-foreground"
-                  : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              )}
-            >
-              <Plus className="w-4 h-4" />
-              Upload Invoice
-            </button>
+        <div className="flex items-center gap-4 px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => {
                 setActiveTab("list");
@@ -602,6 +600,21 @@ export default function Index() {
             >
               <List className="w-4 h-4" />
               Invoice List
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("upload");
+                setSelectedInvoice(null);
+              }}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all border-b-2 -mb-px",
+                activeTab === "upload"
+                  ? "bg-background border-primary text-foreground"
+                  : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50",
+              )}
+            >
+              <Plus className="w-4 h-4" />
+              Upload Invoice
             </button>
           </div>
         </div>

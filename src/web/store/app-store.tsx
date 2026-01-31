@@ -306,38 +306,45 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [apiError, setApiError] = useState<string | null>(null);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customersError, setCustomersError] = useState<string | null>(null);
+  const [apiCustomers, setApiCustomers] = useState<Customer[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
 
-  // Derive customers from invoices
+  // Derive customers from invoices or use API customers if no invoices
   const customers: Customer[] = (() => {
-    const customerMap = new Map<string, Customer>();
+    // If we have invoices, derive customers from them (existing logic)
+    if (invoices.length > 0) {
+      const customerMap = new Map<string, Customer>();
 
-    for (const invoice of invoices) {
-      const existing = customerMap.get(invoice.customerName);
-      const isOverdue = invoice.status === "overdue";
-      const isPaid = invoice.status === "paid";
-      const outstanding = isPaid ? 0 : invoice.amount;
+      for (const invoice of invoices) {
+        const existing = customerMap.get(invoice.customerName);
+        const isOverdue = invoice.status === "overdue";
+        const isPaid = invoice.status === "paid";
+        const outstanding = isPaid ? 0 : invoice.amount;
 
-      if (existing) {
-        customerMap.set(invoice.customerName, {
-          ...existing,
-          invoiceCount: existing.invoiceCount + 1,
-          totalOutstanding: existing.totalOutstanding + outstanding,
-          overdueCount: existing.overdueCount + (isOverdue ? 1 : 0),
-        });
-      } else {
-        customerMap.set(invoice.customerName, {
-          id: `cust-${invoice.customerName.toLowerCase().replace(/\s+/g, "-")}`,
-          name: invoice.customerName,
-          invoiceCount: 1,
-          totalOutstanding: outstanding,
-          overdueCount: isOverdue ? 1 : 0,
-        });
+        if (existing) {
+          customerMap.set(invoice.customerName, {
+            ...existing,
+            invoiceCount: existing.invoiceCount + 1,
+            totalOutstanding: existing.totalOutstanding + outstanding,
+            overdueCount: existing.overdueCount + (isOverdue ? 1 : 0),
+          });
+        } else {
+          customerMap.set(invoice.customerName, {
+            id: `cust-${invoice.customerName.toLowerCase().replace(/\s+/g, "-")}`,
+            name: invoice.customerName,
+            invoiceCount: 1,
+            totalOutstanding: outstanding,
+            overdueCount: isOverdue ? 1 : 0,
+          });
+        }
       }
+
+      return Array.from(customerMap.values());
     }
 
-    return Array.from(customerMap.values());
+    // If no invoices, use API customers
+    return apiCustomers;
   })();
 
   // Derive open tasks count
@@ -380,7 +387,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setApiError(null);
 
     try {
-      const response = await fetch("http://10.4.144.243:5000/invoices");
+      const response = await fetch(
+        "https://cdc9cd9a6e2d.ngrok-free.app/invoices",
+        {
+          headers: {
+            "ngrok-skip-browser-warning": "true",
+          },
+        },
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -408,7 +422,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setCustomersError(null);
 
     try {
-      const response = await fetch("http://10.4.144.243:5000/customers/");
+      const response = await fetch(
+        "https://cdc9cd9a6e2d.ngrok-free.app/customers",
+        {
+          headers: {
+            "ngrok-skip-browser-warning": "true",
+          },
+        },
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -427,9 +448,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         }),
       );
 
-      // Update customers state directly (not derived from invoices)
-      // For now, we'll keep the existing derived logic but could replace it
-      // For simplicity, let's update the customers derivation to include API data
+      // Set the customers state with the converted data
+      setApiCustomers(convertedCustomers);
     } catch (error) {
       console.error("Error fetching customers:", error);
       setCustomersError(
@@ -446,7 +466,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setTasksError(null);
 
     try {
-      const response = await fetch("http://10.4.144.243:5000/tasks/");
+      const response = await fetch(
+        "https://cdc9cd9a6e2d.ngrok-free.app/tasks",
+        {
+          headers: {
+            "ngrok-skip-browser-warning": "true",
+          },
+        },
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

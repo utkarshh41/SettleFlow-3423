@@ -214,9 +214,6 @@ export default function CustomersPage() {
                     <p className="text-destructive font-medium">
                       Failed to load customers
                     </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {customersError}
-                    </p>
                   </div>
                   <Button onClick={fetchCustomers} variant="outline" size="sm">
                     Try Again

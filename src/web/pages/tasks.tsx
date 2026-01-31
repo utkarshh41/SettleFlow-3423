@@ -188,9 +188,6 @@ export default function TasksPage() {
                     <p className="text-destructive font-medium">
                       Failed to load tasks
                     </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {tasksError}
-                    </p>
                   </div>
                   <Button onClick={fetchTasks} variant="outline" size="sm">
                     Try Again

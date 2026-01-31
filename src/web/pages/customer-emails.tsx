@@ -120,32 +120,36 @@ export default function CustomerEmailsPage() {
     setIsSending(true);
 
     try {
-      const response = await fetch("http://10.4.144.243:5000/gmail/webhook", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: selectedEmail.id,
-          threadId: selectedEmail.id,
-          snippet: selectedEmail.body,
-          payload: {
-            mimeType: "text/plain",
+      const response = await fetch(
+        "https://cdc9cd9a6e2d.ngrok-free.app/gmail/webhook",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true",
           },
-          sizeEstimate: selectedEmail.body.length,
-          historyId: Date.now().toString(),
-          internalDate: new Date().toISOString(),
-          labels: [
-            {
-              id: "sent",
-              name: "SENT",
+          body: JSON.stringify({
+            id: selectedEmail.id,
+            threadId: selectedEmail.id,
+            snippet: selectedEmail.body,
+            payload: {
+              mimeType: "text/plain",
             },
-          ],
-          From: "customer@example.com",
-          Subject: selectedEmail.subject,
-          To: "settleflow@example.com",
-        }),
-      });
+            sizeEstimate: selectedEmail.body.length,
+            historyId: Date.now().toString(),
+            internalDate: new Date().toISOString(),
+            labels: [
+              {
+                id: "sent",
+                name: "SENT",
+              },
+            ],
+            From: "customer@example.com",
+            Subject: selectedEmail.subject,
+            To: "settleflow@example.com",
+          }),
+        },
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
