@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/sidebar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   CheckSquare,
   Square,
@@ -9,9 +10,11 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppStore, type Task } from "@/store/app-store";
+import { useEffect } from "react";
 
 function formatTimeAgo(date: Date): string {
   const now = new Date();
@@ -42,7 +45,7 @@ function TaskItem({
         "p-4 border transition-all cursor-pointer group animate-in fade-in slide-in-from-bottom-2",
         isDone
           ? "bg-muted/30 border-border/50"
-          : "hover:border-primary/40 hover:shadow-sm"
+          : "hover:border-primary/40 hover:shadow-sm",
       )}
       style={{ animationDelay: `${index * 50}ms`, animationDuration: "350ms" }}
       onClick={() => onToggle(task.id)}
@@ -54,7 +57,7 @@ function TaskItem({
             "mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-all",
             isDone
               ? "bg-fintech-success/10 text-fintech-success"
-              : "bg-muted/60 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
+              : "bg-muted/60 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary",
           )}
         >
           {isDone ? (
@@ -70,7 +73,9 @@ function TaskItem({
             <span
               className={cn(
                 "text-sm font-medium",
-                isDone ? "text-muted-foreground line-through" : "text-foreground"
+                isDone
+                  ? "text-muted-foreground line-through"
+                  : "text-foreground",
               )}
             >
               {task.description}
@@ -114,7 +119,7 @@ function TaskItem({
             "shrink-0 text-xs font-medium",
             isDone
               ? "bg-fintech-success/10 text-fintech-success border-fintech-success/20"
-              : "bg-amber-100 text-amber-700 border-amber-200"
+              : "bg-amber-100 text-amber-700 border-amber-200",
           )}
         >
           {isDone ? "Done" : "Open"}
@@ -125,7 +130,19 @@ function TaskItem({
 }
 
 export default function TasksPage() {
-  const { tasks, toggleTaskStatus, openTasksCount } = useAppStore();
+  const {
+    tasks,
+    tasksLoading,
+    tasksError,
+    fetchTasks,
+    toggleTaskStatus,
+    openTasksCount,
+  } = useAppStore();
+
+  // Fetch tasks on component mount
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
 
   const openTasks = tasks.filter((t) => t.status === "open");
   const doneTasks = tasks.filter((t) => t.status === "done");
@@ -155,51 +172,78 @@ export default function TasksPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-8">
-          <div className="max-w-3xl mx-auto space-y-8">
-            {/* Open Tasks */}
-            {openTasks.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <div className="w-2 h-2 rounded-full bg-amber-500" />
-                  Open Tasks
-                  <span className="text-muted-foreground">({openTasks.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {openTasks.map((task, index) => (
-                    <TaskItem
-                      key={task.id}
-                      task={task}
-                      onToggle={toggleTaskStatus}
-                      index={index}
-                    />
-                  ))}
+          <div className="max-w-3xl mx-auto">
+            {tasksLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-muted-foreground">Loading tasks...</p>
                 </div>
               </div>
-            )}
-
-            {/* Completed Tasks */}
-            {doneTasks.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <div className="w-2 h-2 rounded-full bg-fintech-success" />
-                  Completed
-                  <span>({doneTasks.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {doneTasks.map((task, index) => (
-                    <TaskItem
-                      key={task.id}
-                      task={task}
-                      onToggle={toggleTaskStatus}
-                      index={index + openTasks.length}
-                    />
-                  ))}
+            ) : tasksError ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-4 max-w-md text-center">
+                  <AlertTriangle className="w-8 h-8 text-destructive" />
+                  <div>
+                    <p className="text-destructive font-medium">
+                      Failed to load tasks
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {tasksError}
+                    </p>
+                  </div>
+                  <Button onClick={fetchTasks} variant="outline" size="sm">
+                    Try Again
+                  </Button>
                 </div>
               </div>
-            )}
+            ) : tasks.length > 0 ? (
+              <div className="space-y-8">
+                {/* Open Tasks */}
+                {openTasks.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      Open Tasks
+                      <span className="text-muted-foreground">
+                        ({openTasks.length})
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {openTasks.map((task, index) => (
+                        <TaskItem
+                          key={task.id}
+                          task={task}
+                          onToggle={toggleTaskStatus}
+                          index={index}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {/* Empty State */}
-            {tasks.length === 0 && (
+                {/* Completed Tasks */}
+                {doneTasks.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                      <div className="w-2 h-2 rounded-full bg-fintech-success" />
+                      Completed
+                      <span>({doneTasks.length})</span>
+                    </div>
+                    <div className="space-y-2">
+                      {doneTasks.map((task, index) => (
+                        <TaskItem
+                          key={task.id}
+                          task={task}
+                          onToggle={toggleTaskStatus}
+                          index={index + openTasks.length}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
               <div className="text-center py-16">
                 <div className="w-16 h-16 rounded-2xl bg-muted/60 flex items-center justify-center mx-auto mb-4">
                   <CheckSquare className="w-8 h-8 text-muted-foreground" />

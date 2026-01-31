@@ -26,6 +26,15 @@ export interface ApiCustomer {
   rating: "GOOD" | "AVERAGE" | "POOR";
 }
 
+export interface ApiTask {
+  id: number;
+  task_number: string;
+  description: string;
+  assigned_to: string;
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  invoice_number: string;
+}
+
 // Types
 export type InvoiceStatus =
   | "draft"
@@ -156,35 +165,7 @@ const initialInvoices: SavedInvoice[] = [
   },
 ];
 
-const initialTasks: Task[] = [
-  {
-    id: "task-001",
-    description: "Fix invoice issue raised by customer",
-    invoiceNumber: "INV-2024-0842",
-    customerName: "Acme Corp",
-    status: "open",
-    priority: "high",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
-  },
-  {
-    id: "task-002",
-    description: "Follow up on customer reply",
-    invoiceNumber: "INV-2024-0845",
-    customerName: "Beta Ltd",
-    status: "open",
-    priority: "normal",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5),
-  },
-  {
-    id: "task-003",
-    description: "Call customer regarding overdue payment",
-    invoiceNumber: "INV-2024-0848",
-    customerName: "Metro Distributors",
-    status: "open",
-    priority: "high",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-  },
-];
+const initialTasks: Task[] = [];
 
 const initialActivities: Activity[] = [
   {
@@ -290,6 +271,8 @@ interface AppContextType {
   apiError: string | null;
   customersLoading: boolean;
   customersError: string | null;
+  tasksLoading: boolean;
+  tasksError: string | null;
 
   // Derived state
   customers: Customer[];
@@ -298,6 +281,7 @@ interface AppContextType {
   // Actions
   fetchInvoices: () => Promise<void>;
   fetchCustomers: () => Promise<void>;
+  fetchTasks: () => Promise<void>;
   addInvoice: (
     invoice: Omit<SavedInvoice, "id" | "createdAt" | "aiSuggestedAction">,
   ) => void;
@@ -322,6 +306,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [apiError, setApiError] = useState<string | null>(null);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customersError, setCustomersError] = useState<string | null>(null);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState<string | null>(null);
 
   // Derive customers from invoices
   const customers: Customer[] = (() => {
@@ -451,6 +437,44 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       );
     } finally {
       setCustomersLoading(false);
+    }
+  }, []);
+
+  // Fetch tasks from API
+  const fetchTasks = useCallback(async () => {
+    setTasksLoading(true);
+    setTasksError(null);
+
+    try {
+      const response = await fetch("http://10.4.144.243:5000/tasks/");
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const apiTasks: ApiTask[] = await response.json();
+
+      // Convert API tasks to our Task format
+      const convertedTasks: Task[] = apiTasks.map((apiTask) => ({
+        id: apiTask.id.toString(),
+        description: apiTask.description,
+        invoiceNumber: apiTask.invoice_number,
+        customerName: undefined, // API doesn't provide customer name
+        status: "open", // API doesn't provide status, default to open
+        priority: apiTask.priority.toLowerCase() === "high" ? "high" : "normal",
+        createdAt: new Date(), // API doesn't provide created date
+      }));
+
+      setTasks(convertedTasks);
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+      setTasksError(
+        error instanceof Error ? error.message : "Failed to fetch tasks",
+      );
+      // Fallback to initial data if API fails
+      setTasks(initialTasks);
+    } finally {
+      setTasksLoading(false);
     }
   }, []);
 
@@ -624,10 +648,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     apiError,
     customersLoading,
     customersError,
+    tasksLoading,
+    tasksError,
     customers,
     openTasksCount,
     fetchInvoices,
     fetchCustomers,
+    fetchTasks,
     addInvoice,
     updateInvoiceStatus,
     addTask,
