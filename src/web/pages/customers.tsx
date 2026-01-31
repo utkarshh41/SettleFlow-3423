@@ -4,73 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users,
   FileText,
-  IndianRupee,
   Building2,
   TrendingUp,
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface Customer {
-  id: string;
-  name: string;
-  invoiceCount: number;
-  totalOutstanding: number;
-  overdueCount: number;
-}
-
-// Mock customer data aggregated from invoices
-const mockCustomers: Customer[] = [
-  {
-    id: "cust-001",
-    name: "Acme Corp",
-    invoiceCount: 3,
-    totalOutstanding: 45000,
-    overdueCount: 1,
-  },
-  {
-    id: "cust-002",
-    name: "Beta Ltd",
-    invoiceCount: 2,
-    totalOutstanding: 12000,
-    overdueCount: 0,
-  },
-  {
-    id: "cust-003",
-    name: "TechVentures Pvt",
-    invoiceCount: 4,
-    totalOutstanding: 78500,
-    overdueCount: 2,
-  },
-  {
-    id: "cust-004",
-    name: "Global Solutions",
-    invoiceCount: 1,
-    totalOutstanding: 156000,
-    overdueCount: 0,
-  },
-  {
-    id: "cust-005",
-    name: "Sunrise Industries",
-    invoiceCount: 2,
-    totalOutstanding: 0,
-    overdueCount: 0,
-  },
-  {
-    id: "cust-006",
-    name: "Metro Distributors",
-    invoiceCount: 3,
-    totalOutstanding: 89000,
-    overdueCount: 1,
-  },
-  {
-    id: "cust-007",
-    name: "Reliance Industries Ltd",
-    invoiceCount: 1,
-    totalOutstanding: 245000,
-    overdueCount: 0,
-  },
-];
+import { useAppStore, type Customer } from "@/store/app-store";
 
 function formatCurrency(amount: number) {
   if (amount === 0) return "—";
@@ -171,12 +110,14 @@ function CustomerCard({ customer, index }: { customer: Customer; index: number }
 }
 
 export default function CustomersPage() {
-  const totalCustomers = mockCustomers.length;
-  const totalOutstanding = mockCustomers.reduce(
+  const { customers } = useAppStore();
+
+  const totalCustomers = customers.length;
+  const totalOutstanding = customers.reduce(
     (sum, c) => sum + c.totalOutstanding,
     0
   );
-  const customersWithOverdue = mockCustomers.filter((c) => c.overdueCount > 0).length;
+  const customersWithOverdue = customers.filter((c) => c.overdueCount > 0).length;
 
   return (
     <div className="flex h-screen bg-background">
@@ -233,9 +174,9 @@ export default function CustomersPage() {
         {/* Content */}
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-3xl mx-auto">
-            {mockCustomers.length > 0 ? (
+            {customers.length > 0 ? (
               <div className="space-y-3">
-                {mockCustomers.map((customer, index) => (
+                {customers.map((customer, index) => (
                   <CustomerCard key={customer.id} customer={customer} index={index} />
                 ))}
               </div>

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,76 +11,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type TaskStatus = "open" | "done";
-
-interface Task {
-  id: string;
-  description: string;
-  invoiceNumber?: string;
-  customerName?: string;
-  status: TaskStatus;
-  priority?: "high" | "normal";
-  createdAt: Date;
-}
-
-// Mock tasks data
-const initialTasks: Task[] = [
-  {
-    id: "task-001",
-    description: "Fix invoice issue raised by customer",
-    invoiceNumber: "INV-2024-0842",
-    customerName: "Acme Corp",
-    status: "open",
-    priority: "high",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
-  },
-  {
-    id: "task-002",
-    description: "Follow up on customer reply",
-    invoiceNumber: "INV-2024-0845",
-    customerName: "Beta Ltd",
-    status: "open",
-    priority: "normal",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5),
-  },
-  {
-    id: "task-003",
-    description: "Call customer regarding overdue payment",
-    invoiceNumber: "INV-2024-0848",
-    customerName: "Metro Distributors",
-    status: "open",
-    priority: "high",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-  },
-  {
-    id: "task-004",
-    description: "Review payment discrepancy",
-    invoiceNumber: "INV-2024-0839",
-    customerName: "TechVentures Pvt",
-    status: "done",
-    priority: "normal",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48),
-  },
-  {
-    id: "task-005",
-    description: "Send updated invoice with corrections",
-    invoiceNumber: "INV-2024-0851",
-    customerName: "Global Solutions",
-    status: "done",
-    priority: "normal",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 72),
-  },
-  {
-    id: "task-006",
-    description: "Verify bank transfer details with customer",
-    invoiceNumber: "INV-2024-0836",
-    customerName: "Sunrise Industries",
-    status: "done",
-    priority: "normal",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 96),
-  },
-];
+import { useAppStore, type Task } from "@/store/app-store";
 
 function formatTimeAgo(date: Date): string {
   const now = new Date();
@@ -195,17 +125,7 @@ function TaskItem({
 }
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-
-  const handleToggle = (id: string) => {
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === id
-          ? { ...task, status: task.status === "done" ? "open" : "done" }
-          : task
-      )
-    );
-  };
+  const { tasks, toggleTaskStatus, openTasksCount } = useAppStore();
 
   const openTasks = tasks.filter((t) => t.status === "open");
   const doneTasks = tasks.filter((t) => t.status === "done");
@@ -228,7 +148,7 @@ export default function TasksPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-100 text-amber-700">
               <CheckSquare className="w-4 h-4" />
-              <span className="text-sm font-medium">{openTasks.length} Open</span>
+              <span className="text-sm font-medium">{openTasksCount} Open</span>
             </div>
           </div>
         </header>
@@ -249,7 +169,7 @@ export default function TasksPage() {
                     <TaskItem
                       key={task.id}
                       task={task}
-                      onToggle={handleToggle}
+                      onToggle={toggleTaskStatus}
                       index={index}
                     />
                   ))}
@@ -270,7 +190,7 @@ export default function TasksPage() {
                     <TaskItem
                       key={task.id}
                       task={task}
-                      onToggle={handleToggle}
+                      onToggle={toggleTaskStatus}
                       index={index + openTasks.length}
                     />
                   ))}

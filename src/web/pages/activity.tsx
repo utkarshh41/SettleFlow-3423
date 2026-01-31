@@ -11,161 +11,11 @@ import {
   FileText,
   User,
   AlertCircle,
-  Bell,
   ArrowRight,
+  Activity as ActivityIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type ActivityType =
-  | "invoice_uploaded"
-  | "ai_suggestion"
-  | "email_sent"
-  | "customer_reply_simulated"
-  | "task_created"
-  | "payment_recorded"
-  | "status_changed";
-
-interface Activity {
-  id: string;
-  type: ActivityType;
-  description: string;
-  customerName?: string;
-  invoiceNumber?: string;
-  timestamp: Date;
-  metadata?: {
-    amount?: number;
-    oldStatus?: string;
-    newStatus?: string;
-    suggestionType?: string;
-  };
-}
-
-// Mock activity data demonstrating full flow
-const mockActivities: Activity[] = [
-  // Today's activities
-  {
-    id: "act-001",
-    type: "payment_recorded",
-    description: "Payment of ₹32,500 received",
-    customerName: "Sunrise Industries",
-    invoiceNumber: "INV-2024-0836",
-    timestamp: new Date(Date.now() - 1000 * 60 * 23), // 23 minutes ago
-    metadata: { amount: 32500 },
-  },
-  {
-    id: "act-002",
-    type: "task_created",
-    description: "Follow-up task created after customer reply simulation",
-    customerName: "Acme Corp",
-    invoiceNumber: "INV-2024-0842",
-    timestamp: new Date(Date.now() - 1000 * 60 * 45), // 45 minutes ago
-  },
-  {
-    id: "act-003",
-    type: "customer_reply_simulated",
-    description: "Customer reply simulation triggered",
-    customerName: "Acme Corp",
-    invoiceNumber: "INV-2024-0842",
-    timestamp: new Date(Date.now() - 1000 * 60 * 47), // 47 minutes ago
-  },
-  {
-    id: "act-004",
-    type: "email_sent",
-    description: "Payment reminder email sent",
-    customerName: "Acme Corp",
-    invoiceNumber: "INV-2024-0842",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60), // 1 hour ago
-  },
-  {
-    id: "act-005",
-    type: "ai_suggestion",
-    description: "AI recommended sending payment reminder",
-    customerName: "Acme Corp",
-    invoiceNumber: "INV-2024-0842",
-    timestamp: new Date(Date.now() - 1000 * 60 * 62), // 1 hour 2 minutes ago
-    metadata: { suggestionType: "send_email" },
-  },
-  {
-    id: "act-006",
-    type: "status_changed",
-    description: "Invoice status changed",
-    customerName: "Acme Corp",
-    invoiceNumber: "INV-2024-0842",
-    timestamp: new Date(Date.now() - 1000 * 60 * 90), // 1.5 hours ago
-    metadata: { oldStatus: "Sent", newStatus: "Overdue" },
-  },
-  // Yesterday's activities
-  {
-    id: "act-007",
-    type: "email_sent",
-    description: "Payment reminder email sent",
-    customerName: "Beta Ltd",
-    invoiceNumber: "INV-2024-0845",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 26), // 26 hours ago
-  },
-  {
-    id: "act-008",
-    type: "ai_suggestion",
-    description: "AI recommended sending early reminder",
-    customerName: "Beta Ltd",
-    invoiceNumber: "INV-2024-0845",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 26.5), // 26.5 hours ago
-    metadata: { suggestionType: "send_reminder" },
-  },
-  {
-    id: "act-009",
-    type: "invoice_uploaded",
-    description: "New invoice uploaded and analyzed",
-    customerName: "Global Solutions",
-    invoiceNumber: "INV-2024-0851",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 28), // 28 hours ago
-    metadata: { amount: 156000 },
-  },
-  // Earlier this week
-  {
-    id: "act-010",
-    type: "payment_recorded",
-    description: "Payment of ₹78,500 received",
-    customerName: "TechVentures Pvt",
-    invoiceNumber: "INV-2024-0839",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72), // 3 days ago
-    metadata: { amount: 78500 },
-  },
-  {
-    id: "act-011",
-    type: "task_created",
-    description: "Call task created for escalation",
-    customerName: "Metro Distributors",
-    invoiceNumber: "INV-2024-0848",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 96), // 4 days ago
-  },
-  {
-    id: "act-012",
-    type: "ai_suggestion",
-    description: "AI recommended calling customer",
-    customerName: "Metro Distributors",
-    invoiceNumber: "INV-2024-0848",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 96.5), // 4 days ago
-    metadata: { suggestionType: "call_customer" },
-  },
-  {
-    id: "act-013",
-    type: "email_sent",
-    description: "Second reminder email sent",
-    customerName: "Metro Distributors",
-    invoiceNumber: "INV-2024-0848",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 120), // 5 days ago
-  },
-  {
-    id: "act-014",
-    type: "invoice_uploaded",
-    description: "New invoice uploaded and analyzed",
-    customerName: "Sunrise Industries",
-    invoiceNumber: "INV-2024-0836",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 144), // 6 days ago
-    metadata: { amount: 32500 },
-  },
-];
+import { useAppStore, type Activity, type ActivityType } from "@/store/app-store";
 
 const activityConfig: Record<
   ActivityType,
@@ -421,7 +271,7 @@ function ActivityItem({
                       : "text-foreground"
                   )}
                 >
-                  {activity.type === "payment_recorded" && "+"}
+                  {activity.type === "payment_recorded" ? "+" : ""}
                   {formatCurrency(activity.metadata.amount)}
                 </p>
               </div>
@@ -433,8 +283,27 @@ function ActivityItem({
   );
 }
 
+function DateGroupHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+        <ActivityIcon className="w-4 h-4 text-muted-foreground" />
+      </div>
+      <h3 className="text-sm font-semibold text-foreground">{label}</h3>
+      <div className="flex-1 h-px bg-border" />
+    </div>
+  );
+}
+
 export default function ActivityPage() {
-  const groupedActivities = groupActivitiesByDate(mockActivities);
+  const { activities } = useAppStore();
+  
+  // Sort activities by timestamp (most recent first)
+  const sortedActivities = [...activities].sort(
+    (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+  );
+  
+  const groupedActivities = groupActivitiesByDate(sortedActivities);
   let globalIndex = 0;
 
   return (
@@ -449,74 +318,56 @@ export default function ActivityPage() {
               Activity Log
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Track all actions and events across your invoices
+              Track all collection activities and updates
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge
-              variant="outline"
-              className="gap-1.5 px-3 py-1.5 bg-primary/5 border-primary/20"
-            >
-              <Bell className="w-3.5 h-3.5 text-primary" />
-              <span className="text-sm font-medium text-primary">
-                {mockActivities.length} activities
-              </span>
-            </Badge>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary">
+            <ActivityIcon className="w-4 h-4" />
+            <span className="text-sm font-medium">
+              {activities.length} Activities
+            </span>
           </div>
         </header>
 
-        {/* Activity Timeline */}
+        {/* Content */}
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-3xl mx-auto">
-            {Array.from(groupedActivities.entries()).map(
-              ([dateGroup, activities], groupIndex) => (
-                <div
-                  key={dateGroup}
-                  className={cn(
-                    "mb-8 animate-in fade-in",
-                    groupIndex === 0 && "duration-200",
-                    groupIndex === 1 && "duration-300",
-                    groupIndex >= 2 && "duration-400"
-                  )}
-                  style={{ animationDelay: `${groupIndex * 100}ms` }}
-                >
-                  {/* Date group header */}
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="h-px flex-1 bg-gradient-to-r from-border to-transparent" />
-                    <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-3">
-                      {dateGroup}
-                    </h2>
-                    <div className="h-px flex-1 bg-gradient-to-l from-border to-transparent" />
-                  </div>
-
-                  {/* Activities in this group */}
-                  <div>
-                    {activities.map((activity, idx) => {
-                      const currentIndex = globalIndex++;
-                      return (
-                        <ActivityItem
-                          key={activity.id}
-                          activity={activity}
-                          isLast={idx === activities.length - 1}
-                          index={currentIndex}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              )
-            )}
-
-            {/* End of timeline indicator */}
-            <div className="flex items-center justify-center py-8">
-              <div className="flex items-center gap-3 text-muted-foreground">
-                <div className="h-px w-12 bg-border" />
-                <span className="text-xs font-medium uppercase tracking-wider">
-                  End of Activity Log
-                </span>
-                <div className="h-px w-12 bg-border" />
+            {activities.length > 0 ? (
+              <div className="space-y-8">
+                {Array.from(groupedActivities.entries()).map(
+                  ([dateGroup, groupActivities]) => (
+                    <div key={dateGroup}>
+                      <DateGroupHeader label={dateGroup} />
+                      <div className="pl-2">
+                        {groupActivities.map((activity, index) => {
+                          const currentIndex = globalIndex++;
+                          return (
+                            <ActivityItem
+                              key={activity.id}
+                              activity={activity}
+                              isLast={index === groupActivities.length - 1}
+                              index={currentIndex}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
-            </div>
+            ) : (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 rounded-2xl bg-muted/60 flex items-center justify-center mx-auto mb-4">
+                  <ActivityIcon className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-medium text-foreground mb-1">
+                  No activity yet
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Activities will appear here as you manage invoices
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </main>

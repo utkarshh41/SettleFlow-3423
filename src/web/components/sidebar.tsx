@@ -16,6 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAppStore } from "@/store/app-store";
 
 interface NavItem {
   label: string;
@@ -24,13 +25,6 @@ interface NavItem {
   badge?: number;
 }
 
-const mainNavItems: NavItem[] = [
-  { label: "Customers", href: "/customers", icon: Users },
-  { label: "Invoices", href: "/", icon: FileText, badge: 24 },
-  { label: "Tasks", href: "/tasks", icon: CheckSquare, badge: 8 },
-  { label: "Activity", href: "/activity", icon: Activity },
-];
-
 const bottomNavItems: NavItem[] = [
   { label: "Settings", href: "/settings", icon: Settings },
   { label: "Help", href: "/help", icon: HelpCircle },
@@ -38,6 +32,14 @@ const bottomNavItems: NavItem[] = [
 
 export function Sidebar() {
   const [location] = useLocation();
+  const { invoices, openTasksCount } = useAppStore();
+
+  const mainNavItems: NavItem[] = [
+    { label: "Customers", href: "/customers", icon: Users },
+    { label: "Invoices", href: "/", icon: FileText, badge: invoices.length },
+    { label: "Tasks", href: "/tasks", icon: CheckSquare, badge: openTasksCount },
+    { label: "Activity", href: "/activity", icon: Activity },
+  ];
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -93,7 +95,7 @@ export function Sidebar() {
                         {item.label}
                       </span>
                     </div>
-                    {item.badge && (
+                    {item.badge !== undefined && item.badge > 0 && (
                       <span
                         className={cn(
                           "text-xs font-medium px-2 py-0.5 rounded-full",

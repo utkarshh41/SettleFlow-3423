@@ -43,8 +43,7 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type InvoiceStatus = "draft" | "sent" | "overdue" | "paid" | "due_tomorrow";
+import { useAppStore, type SavedInvoice, type InvoiceStatus } from "@/store/app-store";
 
 interface ExtractedInvoice {
   customerName: string;
@@ -52,19 +51,6 @@ interface ExtractedInvoice {
   amount: number;
   dueDate: string;
   status: InvoiceStatus;
-}
-
-interface SavedInvoice {
-  id: string;
-  customerName: string;
-  invoiceNumber: string;
-  amount: number;
-  dueDate: string;
-  status: InvoiceStatus;
-  aiSuggestedAction: {
-    type: "send_email" | "send_reminder" | "call_customer" | "none";
-    label: string;
-  };
 }
 
 type ViewState = "upload" | "analyzing" | "extracted" | "saved";
@@ -93,64 +79,6 @@ const statusConfig: Record<InvoiceStatus, { label: string; className: string }> 
   },
 };
 
-// Sample saved invoices data
-const initialInvoices: SavedInvoice[] = [
-  {
-    id: "inv-001",
-    customerName: "Acme Corp",
-    invoiceNumber: "INV-2024-0842",
-    amount: 45000,
-    dueDate: "2024-01-15",
-    status: "overdue",
-    aiSuggestedAction: { type: "send_email", label: "Send Email" },
-  },
-  {
-    id: "inv-002",
-    customerName: "Beta Ltd",
-    invoiceNumber: "INV-2024-0845",
-    amount: 12000,
-    dueDate: "2024-02-01",
-    status: "due_tomorrow",
-    aiSuggestedAction: { type: "send_email", label: "Send Email" },
-  },
-  {
-    id: "inv-003",
-    customerName: "TechVentures Pvt",
-    invoiceNumber: "INV-2024-0839",
-    amount: 78500,
-    dueDate: "2024-01-20",
-    status: "overdue",
-    aiSuggestedAction: { type: "call_customer", label: "Call Customer" },
-  },
-  {
-    id: "inv-004",
-    customerName: "Global Solutions",
-    invoiceNumber: "INV-2024-0851",
-    amount: 156000,
-    dueDate: "2024-02-10",
-    status: "sent",
-    aiSuggestedAction: { type: "none", label: "No Action Needed" },
-  },
-  {
-    id: "inv-005",
-    customerName: "Sunrise Industries",
-    invoiceNumber: "INV-2024-0836",
-    amount: 32500,
-    dueDate: "2024-01-08",
-    status: "paid",
-    aiSuggestedAction: { type: "none", label: "Completed" },
-  },
-  {
-    id: "inv-006",
-    customerName: "Metro Distributors",
-    invoiceNumber: "INV-2024-0848",
-    amount: 89000,
-    dueDate: "2024-01-25",
-    status: "overdue",
-    aiSuggestedAction: { type: "send_reminder", label: "Send Reminder" },
-  },
-];
-
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -172,11 +100,13 @@ function formatDate(dateString: string) {
 function simulateAIAnalysis(): Promise<ExtractedInvoice> {
   return new Promise((resolve) => {
     setTimeout(() => {
+      // Generate a unique invoice number
+      const invoiceNum = `INV-2024-${String(Math.floor(Math.random() * 9000) + 1000)}`;
       const invoiceData: ExtractedInvoice = {
         customerName: "Reliance Industries Ltd",
-        invoiceNumber: "INV-2024-0847",
-        amount: 245000.5,
-        dueDate: "2024-02-15",
+        invoiceNumber: invoiceNum,
+        amount: 245000,
+        dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString().split("T")[0], // 14 days from now
         status: "sent",
       };
       resolve(invoiceData);
@@ -276,13 +206,20 @@ function Toast({
 }
 
 export default function Index() {
+  const { 
+    invoices, 
+    addInvoice, 
+    sendEmailForInvoice, 
+    simulateCustomerReply, 
+    markInvoiceAsPaid 
+  } = useAppStore();
+
   const [activeTab, setActiveTab] = useState<TabState>("upload");
   const [viewState, setViewState] = useState<ViewState>("upload");
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [extractedData, setExtractedData] = useState<ExtractedInvoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<SavedInvoice | null>(null);
-  const [invoices, setInvoices] = useState<SavedInvoice[]>(initialInvoices);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Modal and notification states
@@ -350,7 +287,17 @@ export default function Index() {
   };
 
   const handleSave = () => {
-    // In production, this would save to the database
+    if (!extractedData) return;
+
+    // Add invoice to the store (this also creates customer record and adds activity)
+    addInvoice({
+      customerName: extractedData.customerName,
+      invoiceNumber: extractedData.invoiceNumber,
+      amount: extractedData.amount,
+      dueDate: extractedData.dueDate,
+      status: extractedData.status,
+    });
+
     setViewState("saved");
 
     // Reset after showing success
@@ -358,6 +305,8 @@ export default function Index() {
       setViewState("upload");
       setUploadedFile(null);
       setExtractedData(null);
+      // Switch to list view to see the newly added invoice
+      setActiveTab("list");
     }, 2000);
   };
 
@@ -381,9 +330,14 @@ export default function Index() {
   };
 
   const handleConfirmSendEmail = () => {
+    if (!selectedInvoice) return;
+    
     setIsSendingEmail(true);
     // Simulate sending email
     setTimeout(() => {
+      // Add activity to the store
+      sendEmailForInvoice(selectedInvoice);
+      
       setIsSendingEmail(false);
       setIsEmailModalOpen(false);
       showToast("Payment reminder email sent successfully", "success");
@@ -391,22 +345,20 @@ export default function Index() {
   };
 
   const handleSimulateCustomerReply = () => {
-    showToast("Task created: Follow up on customer reply", "info");
+    if (!selectedInvoice) return;
+    
+    // This creates a task and adds activities to the store
+    simulateCustomerReply(selectedInvoice);
+    showToast("Task created: Fix invoice issue raised by customer", "info");
   };
 
   const handleMarkAsPaid = () => {
     if (!selectedInvoice) return;
     
-    // Update invoice status
-    setInvoices(prevInvoices => 
-      prevInvoices.map(inv => 
-        inv.id === selectedInvoice.id 
-          ? { ...inv, status: "paid" as InvoiceStatus, aiSuggestedAction: { type: "none" as const, label: "Completed" } }
-          : inv
-      )
-    );
+    // Update invoice status and add activity to the store
+    markInvoiceAsPaid(selectedInvoice.id);
     
-    // Update selected invoice
+    // Update local selected invoice state to reflect the change
     setSelectedInvoice({
       ...selectedInvoice,
       status: "paid",
@@ -415,6 +367,11 @@ export default function Index() {
     
     showToast("Invoice marked as paid", "success");
   };
+
+  // Get current selected invoice from store (to reflect any updates)
+  const currentSelectedInvoice = selectedInvoice 
+    ? invoices.find(inv => inv.id === selectedInvoice.id) ?? selectedInvoice
+    : null;
 
   return (
     <div className="flex h-screen bg-background">
@@ -425,13 +382,13 @@ export default function Index() {
         <header className="flex items-center justify-between px-8 py-5 border-b border-border bg-card">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {activeTab === "upload" ? "Invoice Upload" : selectedInvoice ? "Invoice Details" : "Invoice List"}
+              {activeTab === "upload" ? "Invoice Upload" : currentSelectedInvoice ? "Invoice Details" : "Invoice List"}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {activeTab === "upload"
                 ? "Upload and analyze invoices with AI"
-                : selectedInvoice
-                ? `Viewing ${selectedInvoice.invoiceNumber}`
+                : currentSelectedInvoice
+                ? `Viewing ${currentSelectedInvoice.invoiceNumber}`
                 : "Manage and track all your invoices"}
             </p>
           </div>
@@ -716,7 +673,7 @@ export default function Index() {
         )}
 
         {/* Invoice List View */}
-        {activeTab === "list" && !selectedInvoice && (
+        {activeTab === "list" && !currentSelectedInvoice && (
           <div className="flex-1 p-8 overflow-auto animate-in fade-in duration-300">
             <Card className="border overflow-hidden">
               <Table>
@@ -800,7 +757,7 @@ export default function Index() {
         )}
 
         {/* Invoice Detail View - Enhanced */}
-        {activeTab === "list" && selectedInvoice && (
+        {activeTab === "list" && currentSelectedInvoice && (
           <div className="flex-1 p-8 overflow-auto animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="max-w-2xl mx-auto space-y-6">
               {/* Back Button */}
@@ -821,16 +778,16 @@ export default function Index() {
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                         <FileText className="w-5 h-5 text-primary" />
                       </div>
-                      {selectedInvoice.invoiceNumber}
+                      {currentSelectedInvoice.invoiceNumber}
                     </CardTitle>
                     <Badge
                       variant="outline"
                       className={cn(
                         "font-medium border text-sm",
-                        statusConfig[selectedInvoice.status].className
+                        statusConfig[currentSelectedInvoice.status].className
                       )}
                     >
-                      {statusConfig[selectedInvoice.status].label}
+                      {statusConfig[currentSelectedInvoice.status].label}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -846,7 +803,7 @@ export default function Index() {
                           Customer Name
                         </p>
                         <p className="text-base font-semibold text-foreground">
-                          {selectedInvoice.customerName}
+                          {currentSelectedInvoice.customerName}
                         </p>
                       </div>
                     </div>
@@ -861,7 +818,7 @@ export default function Index() {
                           Amount
                         </p>
                         <p className="text-2xl font-mono font-bold text-foreground">
-                          {formatCurrency(selectedInvoice.amount)}
+                          {formatCurrency(currentSelectedInvoice.amount)}
                         </p>
                       </div>
                     </div>
@@ -876,7 +833,7 @@ export default function Index() {
                           Due Date
                         </p>
                         <p className="text-base font-semibold text-foreground">
-                          {formatDate(selectedInvoice.dueDate)}
+                          {formatDate(currentSelectedInvoice.dueDate)}
                         </p>
                       </div>
                     </div>
@@ -887,27 +844,27 @@ export default function Index() {
               {/* AI Recommendation Card */}
               <Card className={cn(
                 "border-2 overflow-hidden relative",
-                selectedInvoice.status === "overdue" && "border-fintech-danger/30 bg-fintech-danger/5",
-                selectedInvoice.status === "due_tomorrow" && "border-fintech-warning/30 bg-fintech-warning/5",
-                selectedInvoice.status === "paid" && "border-fintech-success/30 bg-fintech-success/5"
+                currentSelectedInvoice.status === "overdue" && "border-fintech-danger/30 bg-fintech-danger/5",
+                currentSelectedInvoice.status === "due_tomorrow" && "border-fintech-warning/30 bg-fintech-warning/5",
+                currentSelectedInvoice.status === "paid" && "border-fintech-success/30 bg-fintech-success/5"
               )}>
                 <CardContent className="p-6">
                   <div className="flex gap-4">
                     <div className={cn(
                       "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
-                      selectedInvoice.status === "overdue" && "bg-fintech-danger/10",
-                      selectedInvoice.status === "due_tomorrow" && "bg-fintech-warning/10",
-                      selectedInvoice.status === "paid" && "bg-fintech-success/10",
-                      selectedInvoice.status === "sent" && "bg-primary/10",
-                      selectedInvoice.status === "draft" && "bg-muted"
+                      currentSelectedInvoice.status === "overdue" && "bg-fintech-danger/10",
+                      currentSelectedInvoice.status === "due_tomorrow" && "bg-fintech-warning/10",
+                      currentSelectedInvoice.status === "paid" && "bg-fintech-success/10",
+                      currentSelectedInvoice.status === "sent" && "bg-primary/10",
+                      currentSelectedInvoice.status === "draft" && "bg-muted"
                     )}>
                       <Sparkles className={cn(
                         "w-6 h-6",
-                        selectedInvoice.status === "overdue" && "text-fintech-danger",
-                        selectedInvoice.status === "due_tomorrow" && "text-fintech-warning",
-                        selectedInvoice.status === "paid" && "text-fintech-success",
-                        selectedInvoice.status === "sent" && "text-primary",
-                        selectedInvoice.status === "draft" && "text-muted-foreground"
+                        currentSelectedInvoice.status === "overdue" && "text-fintech-danger",
+                        currentSelectedInvoice.status === "due_tomorrow" && "text-fintech-warning",
+                        currentSelectedInvoice.status === "paid" && "text-fintech-success",
+                        currentSelectedInvoice.status === "sent" && "text-primary",
+                        currentSelectedInvoice.status === "draft" && "text-muted-foreground"
                       )} />
                     </div>
                     <div className="flex-1">
@@ -918,7 +875,7 @@ export default function Index() {
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        {getAIRecommendationMessage(selectedInvoice)}
+                        {getAIRecommendationMessage(currentSelectedInvoice)}
                       </p>
                     </div>
                   </div>
@@ -930,7 +887,7 @@ export default function Index() {
                 <Button 
                   className="flex-1 h-12 rounded-xl gap-2"
                   onClick={handleSendEmail}
-                  disabled={selectedInvoice.status === "paid"}
+                  disabled={currentSelectedInvoice.status === "paid"}
                 >
                   <Mail className="w-4 h-4" />
                   Send Email
@@ -939,7 +896,7 @@ export default function Index() {
                   variant="outline" 
                   className="flex-1 h-12 rounded-xl gap-2"
                   onClick={handleSimulateCustomerReply}
-                  disabled={selectedInvoice.status === "paid"}
+                  disabled={currentSelectedInvoice.status === "paid"}
                 >
                   <MessageSquare className="w-4 h-4" />
                   Simulate Customer Reply
@@ -947,7 +904,7 @@ export default function Index() {
                 <Button 
                   className="h-12 rounded-xl gap-2 bg-fintech-success hover:bg-fintech-success/90 text-white"
                   onClick={handleMarkAsPaid}
-                  disabled={selectedInvoice.status === "paid"}
+                  disabled={currentSelectedInvoice.status === "paid"}
                 >
                   <CheckCheck className="w-4 h-4" />
                   Mark as Paid
@@ -969,13 +926,13 @@ export default function Index() {
               Payment Reminder Email
             </DialogTitle>
             <DialogDescription>
-              Review the AI-generated email before sending to {selectedInvoice?.customerName}
+              Review the AI-generated email before sending to {currentSelectedInvoice?.customerName}
             </DialogDescription>
           </DialogHeader>
           
           <div className="flex-1 overflow-auto py-4">
             <div className="bg-muted/50 rounded-xl p-5 font-mono text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">
-              {selectedInvoice && generatePaymentReminderEmail(selectedInvoice)}
+              {currentSelectedInvoice && generatePaymentReminderEmail(currentSelectedInvoice)}
             </div>
           </div>
 
