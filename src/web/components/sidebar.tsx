@@ -32,12 +32,17 @@ const bottomNavItems: NavItem[] = [
 
 export function Sidebar() {
   const [location] = useLocation();
-  const { invoices, openTasksCount } = useAppStore();
+  const { openTasksCount } = useAppStore();
 
   const mainNavItems: NavItem[] = [
+    { label: "Invoices", href: "/", icon: FileText, badge: undefined },
     { label: "Customers", href: "/customers", icon: Users },
-    { label: "Invoices", href: "/", icon: FileText, badge: invoices.length },
-    { label: "Tasks", href: "/tasks", icon: CheckSquare, badge: openTasksCount },
+    {
+      label: "Tasks",
+      href: "/tasks",
+      icon: CheckSquare,
+      badge: openTasksCount,
+    },
     { label: "Activity", href: "/activity", icon: Activity },
   ];
 
@@ -51,7 +56,7 @@ export function Sidebar() {
           </div>
           <div className="flex flex-col">
             <span className="text-[15px] font-semibold tracking-tight text-sidebar-foreground">
-              AI Collection
+              SettleFlow
             </span>
             <span className="text-[11px] text-muted-foreground font-medium tracking-wide uppercase">
               B2B Collections
@@ -74,7 +79,7 @@ export function Sidebar() {
                       "nav-item group flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer",
                       isActive
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
                     )}
                   >
                     <div className="flex items-center gap-3">
@@ -83,13 +88,13 @@ export function Sidebar() {
                           "w-[18px] h-[18px]",
                           isActive
                             ? "text-primary"
-                            : "text-muted-foreground group-hover:text-primary/70"
+                            : "text-muted-foreground group-hover:text-primary/70",
                         )}
                       />
                       <span
                         className={cn(
                           "text-sm",
-                          isActive ? "font-medium" : "font-normal"
+                          isActive ? "font-medium" : "font-normal",
                         )}
                       >
                         {item.label}
@@ -101,7 +106,7 @@ export function Sidebar() {
                           "text-xs font-medium px-2 py-0.5 rounded-full",
                           isActive
                             ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground"
+                            : "bg-muted text-muted-foreground",
                         )}
                       >
                         {item.badge}
@@ -142,12 +147,12 @@ export function Sidebar() {
             <div className="flex items-center gap-3 px-3 py-2">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center">
                 <span className="text-xs font-semibold text-primary-foreground">
-                  JD
+                  AB
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-sidebar-foreground truncate">
-                  John Doe
+                  Anirudh Bharghawa
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
                   Collections Manager

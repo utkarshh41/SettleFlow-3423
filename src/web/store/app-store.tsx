@@ -1,7 +1,30 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
+
+// Types for API response
+export interface ApiInvoice {
+  id: number;
+  invoice_number: string;
+  invoice_total_amount: number;
+  invoice_date: string;
+  invoice_due_date: string;
+  invoice_paid_amount: number;
+  expected_payment_date: string;
+  customer_name: string;
+}
 
 // Types
-export type InvoiceStatus = "draft" | "sent" | "overdue" | "paid" | "due_tomorrow";
+export type InvoiceStatus =
+  | "draft"
+  | "sent"
+  | "overdue"
+  | "paid"
+  | "due_tomorrow";
 
 export interface SavedInvoice {
   id: string;
@@ -255,18 +278,23 @@ interface AppContextType {
   invoices: SavedInvoice[];
   tasks: Task[];
   activities: Activity[];
-  
+  isLoading: boolean;
+  apiError: string | null;
+
   // Derived state
   customers: Customer[];
   openTasksCount: number;
-  
+
   // Actions
-  addInvoice: (invoice: Omit<SavedInvoice, "id" | "createdAt" | "aiSuggestedAction">) => void;
+  fetchInvoices: () => Promise<void>;
+  addInvoice: (
+    invoice: Omit<SavedInvoice, "id" | "createdAt" | "aiSuggestedAction">,
+  ) => void;
   updateInvoiceStatus: (invoiceId: string, status: InvoiceStatus) => void;
   addTask: (task: Omit<Task, "id" | "createdAt">) => void;
   toggleTaskStatus: (taskId: string) => void;
   addActivity: (activity: Omit<Activity, "id" | "timestamp">) => void;
-  
+
   // Compound actions (for the happy path flow)
   sendEmailForInvoice: (invoice: SavedInvoice) => void;
   simulateCustomerReply: (invoice: SavedInvoice) => void;
@@ -276,20 +304,22 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
-  const [invoices, setInvoices] = useState<SavedInvoice[]>(initialInvoices);
+  const [invoices, setInvoices] = useState<SavedInvoice[]>([]);
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [activities, setActivities] = useState<Activity[]>(initialActivities);
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Derive customers from invoices
   const customers: Customer[] = (() => {
     const customerMap = new Map<string, Customer>();
-    
+
     for (const invoice of invoices) {
       const existing = customerMap.get(invoice.customerName);
       const isOverdue = invoice.status === "overdue";
       const isPaid = invoice.status === "paid";
       const outstanding = isPaid ? 0 : invoice.amount;
-      
+
       if (existing) {
         customerMap.set(invoice.customerName, {
           ...existing,
@@ -307,63 +337,131 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-    
+
     return Array.from(customerMap.values());
   })();
 
   // Derive open tasks count
-  const openTasksCount = tasks.filter(t => t.status === "open").length;
+  const openTasksCount = tasks.filter((t) => t.status === "open").length;
+
+  // Helper to convert API invoice to our format
+  function convertApiInvoice(apiInvoice: ApiInvoice): SavedInvoice {
+    const dueDate = new Date(apiInvoice.invoice_due_date);
+    const now = new Date();
+    const daysUntilDue = Math.ceil(
+      (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    let status: InvoiceStatus;
+    if (apiInvoice.invoice_paid_amount >= apiInvoice.invoice_total_amount) {
+      status = "paid";
+    } else if (daysUntilDue < 0) {
+      status = "overdue";
+    } else if (daysUntilDue <= 1) {
+      status = "due_tomorrow";
+    } else {
+      status = "sent";
+    }
+
+    return {
+      id: apiInvoice.id.toString(),
+      customerName: apiInvoice.customer_name,
+      invoiceNumber: apiInvoice.invoice_number,
+      amount: apiInvoice.invoice_total_amount,
+      dueDate: apiInvoice.invoice_due_date,
+      status,
+      aiSuggestedAction: determineAiAction(status, apiInvoice.invoice_due_date),
+      createdAt: new Date(apiInvoice.invoice_date),
+    };
+  }
+
+  // Fetch invoices from API
+  const fetchInvoices = useCallback(async () => {
+    setIsLoading(true);
+    setApiError(null);
+
+    try {
+      const response = await fetch("http://10.4.144.243:5000/invoices");
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const apiInvoices: ApiInvoice[] = await response.json();
+      const convertedInvoices = apiInvoices.map(convertApiInvoice);
+
+      setInvoices(convertedInvoices);
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+      setApiError(
+        error instanceof Error ? error.message : "Failed to fetch invoices",
+      );
+      // Fallback to initial data if API fails
+      setInvoices(initialInvoices);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   // Add invoice
-  const addInvoice = useCallback((invoice: Omit<SavedInvoice, "id" | "createdAt" | "aiSuggestedAction">) => {
-    const newInvoice: SavedInvoice = {
-      ...invoice,
-      id: generateId("inv"),
-      createdAt: new Date(),
-      aiSuggestedAction: determineAiAction(invoice.status, invoice.dueDate),
-    };
-    
-    setInvoices(prev => [newInvoice, ...prev]);
-    
-    // Add activity for invoice upload
-    const newActivity: Activity = {
-      id: generateId("act"),
-      type: "invoice_uploaded",
-      description: "New invoice uploaded and analyzed",
-      customerName: invoice.customerName,
-      invoiceNumber: invoice.invoiceNumber,
-      timestamp: new Date(),
-      metadata: { amount: invoice.amount },
-    };
-    setActivities(prev => [newActivity, ...prev]);
-    
-    // Also add AI suggestion activity
-    const suggestionActivity: Activity = {
-      id: generateId("act"),
-      type: "ai_suggestion",
-      description: `AI recommended ${newInvoice.aiSuggestedAction.label.toLowerCase()}`,
-      customerName: invoice.customerName,
-      invoiceNumber: invoice.invoiceNumber,
-      timestamp: new Date(),
-      metadata: { suggestionType: newInvoice.aiSuggestedAction.type },
-    };
-    setActivities(prev => [suggestionActivity, ...prev]);
-  }, []);
+  const addInvoice = useCallback(
+    (invoice: Omit<SavedInvoice, "id" | "createdAt" | "aiSuggestedAction">) => {
+      const newInvoice: SavedInvoice = {
+        ...invoice,
+        id: generateId("inv"),
+        createdAt: new Date(),
+        aiSuggestedAction: determineAiAction(invoice.status, invoice.dueDate),
+      };
+
+      setInvoices((prev) => [newInvoice, ...prev]);
+
+      // Add activity for invoice upload
+      const newActivity: Activity = {
+        id: generateId("act"),
+        type: "invoice_uploaded",
+        description: "New invoice uploaded and analyzed",
+        customerName: invoice.customerName,
+        invoiceNumber: invoice.invoiceNumber,
+        timestamp: new Date(),
+        metadata: { amount: invoice.amount },
+      };
+      setActivities((prev) => [newActivity, ...prev]);
+
+      // Also add AI suggestion activity
+      const suggestionActivity: Activity = {
+        id: generateId("act"),
+        type: "ai_suggestion",
+        description: `AI recommended ${newInvoice.aiSuggestedAction.label.toLowerCase()}`,
+        customerName: invoice.customerName,
+        invoiceNumber: invoice.invoiceNumber,
+        timestamp: new Date(),
+        metadata: { suggestionType: newInvoice.aiSuggestedAction.type },
+      };
+      setActivities((prev) => [suggestionActivity, ...prev]);
+    },
+    [],
+  );
 
   // Update invoice status
-  const updateInvoiceStatus = useCallback((invoiceId: string, status: InvoiceStatus) => {
-    setInvoices(prev => prev.map(inv => 
-      inv.id === invoiceId 
-        ? { 
-            ...inv, 
-            status, 
-            aiSuggestedAction: status === "paid" 
-              ? { type: "none" as const, label: "Completed" }
-              : determineAiAction(status, inv.dueDate)
-          }
-        : inv
-    ));
-  }, []);
+  const updateInvoiceStatus = useCallback(
+    (invoiceId: string, status: InvoiceStatus) => {
+      setInvoices((prev) =>
+        prev.map((inv) =>
+          inv.id === invoiceId
+            ? {
+                ...inv,
+                status,
+                aiSuggestedAction:
+                  status === "paid"
+                    ? { type: "none" as const, label: "Completed" }
+                    : determineAiAction(status, inv.dueDate),
+              }
+            : inv,
+        ),
+      );
+    },
+    [],
+  );
 
   // Add task
   const addTask = useCallback((task: Omit<Task, "id" | "createdAt">) => {
@@ -372,93 +470,110 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       id: generateId("task"),
       createdAt: new Date(),
     };
-    setTasks(prev => [newTask, ...prev]);
+    setTasks((prev) => [newTask, ...prev]);
   }, []);
 
   // Toggle task status
   const toggleTaskStatus = useCallback((taskId: string) => {
-    setTasks(prev => prev.map(task =>
-      task.id === taskId
-        ? { ...task, status: task.status === "done" ? "open" : "done" }
-        : task
-    ));
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId
+          ? { ...task, status: task.status === "done" ? "open" : "done" }
+          : task,
+      ),
+    );
   }, []);
 
   // Add activity
-  const addActivity = useCallback((activity: Omit<Activity, "id" | "timestamp">) => {
-    const newActivity: Activity = {
-      ...activity,
-      id: generateId("act"),
-      timestamp: new Date(),
-    };
-    setActivities(prev => [newActivity, ...prev]);
-  }, []);
+  const addActivity = useCallback(
+    (activity: Omit<Activity, "id" | "timestamp">) => {
+      const newActivity: Activity = {
+        ...activity,
+        id: generateId("act"),
+        timestamp: new Date(),
+      };
+      setActivities((prev) => [newActivity, ...prev]);
+    },
+    [],
+  );
 
   // Send email for invoice (compound action)
-  const sendEmailForInvoice = useCallback((invoice: SavedInvoice) => {
-    addActivity({
-      type: "email_sent",
-      description: "Payment reminder email sent",
-      customerName: invoice.customerName,
-      invoiceNumber: invoice.invoiceNumber,
-    });
-  }, [addActivity]);
+  const sendEmailForInvoice = useCallback(
+    (invoice: SavedInvoice) => {
+      addActivity({
+        type: "email_sent",
+        description: "Payment reminder email sent",
+        customerName: invoice.customerName,
+        invoiceNumber: invoice.invoiceNumber,
+      });
+    },
+    [addActivity],
+  );
 
   // Simulate customer reply (compound action)
-  const simulateCustomerReply = useCallback((invoice: SavedInvoice) => {
-    // Add customer reply simulation activity
-    addActivity({
-      type: "customer_reply_simulated",
-      description: "Customer reply simulation triggered",
-      customerName: invoice.customerName,
-      invoiceNumber: invoice.invoiceNumber,
-    });
+  const simulateCustomerReply = useCallback(
+    (invoice: SavedInvoice) => {
+      // Add customer reply simulation activity
+      addActivity({
+        type: "customer_reply_simulated",
+        description: "Customer reply simulation triggered",
+        customerName: invoice.customerName,
+        invoiceNumber: invoice.invoiceNumber,
+      });
 
-    // Create a task
-    const newTask: Task = {
-      id: generateId("task"),
-      description: "Fix invoice issue raised by customer",
-      invoiceNumber: invoice.invoiceNumber,
-      customerName: invoice.customerName,
-      status: "open",
-      priority: "high",
-      createdAt: new Date(),
-    };
-    setTasks(prev => [newTask, ...prev]);
+      // Create a task
+      const newTask: Task = {
+        id: generateId("task"),
+        description: "Fix invoice issue raised by customer",
+        invoiceNumber: invoice.invoiceNumber,
+        customerName: invoice.customerName,
+        status: "open",
+        priority: "high",
+        createdAt: new Date(),
+      };
+      setTasks((prev) => [newTask, ...prev]);
 
-    // Add task creation activity
-    addActivity({
-      type: "task_created",
-      description: "Follow-up task created after customer reply simulation",
-      customerName: invoice.customerName,
-      invoiceNumber: invoice.invoiceNumber,
-    });
-  }, [addActivity]);
+      // Add task creation activity
+      addActivity({
+        type: "task_created",
+        description: "Follow-up task created after customer reply simulation",
+        customerName: invoice.customerName,
+        invoiceNumber: invoice.invoiceNumber,
+      });
+    },
+    [addActivity],
+  );
 
   // Mark invoice as paid (compound action)
-  const markInvoiceAsPaid = useCallback((invoiceId: string) => {
-    const invoice = invoices.find(inv => inv.id === invoiceId);
-    if (!invoice) return;
+  const markInvoiceAsPaid = useCallback(
+    (invoiceId: string) => {
+      const invoice = invoices.find((inv) => inv.id === invoiceId);
+      if (!invoice) return;
 
-    // Update invoice status
-    updateInvoiceStatus(invoiceId, "paid");
+      // Update invoice status
+      updateInvoiceStatus(invoiceId, "paid");
 
-    // Add payment activity
-    addActivity({
-      type: "payment_recorded",
-      description: `Payment of ₹${invoice.amount.toLocaleString("en-IN")} received`,
-      customerName: invoice.customerName,
-      invoiceNumber: invoice.invoiceNumber,
-      metadata: { amount: invoice.amount },
-    });
-  }, [invoices, updateInvoiceStatus, addActivity]);
+      // Add payment activity
+      addActivity({
+        type: "payment_recorded",
+        description: `Payment of ₹${invoice.amount.toLocaleString("en-IN")} received`,
+        customerName: invoice.customerName,
+        invoiceNumber: invoice.invoiceNumber,
+        metadata: { amount: invoice.amount },
+      });
+    },
+    [invoices, updateInvoiceStatus, addActivity],
+  );
 
   const value: AppContextType = {
     invoices,
     tasks,
     activities,
+    isLoading,
+    apiError,
     customers,
     openTasksCount,
+    fetchInvoices,
     addInvoice,
     updateInvoiceStatus,
     addTask,
@@ -481,10 +596,15 @@ export function useAppStore() {
 }
 
 // Helper to determine AI action based on status
-function determineAiAction(status: InvoiceStatus, dueDate: string): SavedInvoice["aiSuggestedAction"] {
+function determineAiAction(
+  status: InvoiceStatus,
+  dueDate: string,
+): SavedInvoice["aiSuggestedAction"] {
   const due = new Date(dueDate);
   const now = new Date();
-  const daysUntilDue = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const daysUntilDue = Math.ceil(
+    (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+  );
 
   if (status === "paid") {
     return { type: "none", label: "Completed" };

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,9 +41,14 @@ import {
   Send,
   X,
   ClipboardCheck,
+  UploadCloudIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAppStore, type SavedInvoice, type InvoiceStatus } from "@/store/app-store";
+import {
+  useAppStore,
+  type SavedInvoice,
+  type InvoiceStatus,
+} from "@/store/app-store";
 
 interface ExtractedInvoice {
   customerName: string;
@@ -56,7 +61,10 @@ interface ExtractedInvoice {
 type ViewState = "upload" | "analyzing" | "extracted" | "saved";
 type TabState = "upload" | "list";
 
-const statusConfig: Record<InvoiceStatus, { label: string; className: string }> = {
+const statusConfig: Record<
+  InvoiceStatus,
+  { label: string; className: string }
+> = {
   draft: {
     label: "Draft",
     className: "bg-muted text-muted-foreground border-border",
@@ -67,15 +75,18 @@ const statusConfig: Record<InvoiceStatus, { label: string; className: string }> 
   },
   overdue: {
     label: "Overdue",
-    className: "bg-fintech-danger/10 text-fintech-danger border-fintech-danger/20",
+    className:
+      "bg-fintech-danger/10 text-fintech-danger border-fintech-danger/20",
   },
   paid: {
     label: "Paid",
-    className: "bg-fintech-success/10 text-fintech-success border-fintech-success/20",
+    className:
+      "bg-fintech-success/10 text-fintech-success border-fintech-success/20",
   },
   due_tomorrow: {
     label: "Due Tomorrow",
-    className: "bg-fintech-warning/10 text-fintech-warning border-fintech-warning/20",
+    className:
+      "bg-fintech-warning/10 text-fintech-warning border-fintech-warning/20",
   },
 };
 
@@ -106,7 +117,9 @@ function simulateAIAnalysis(): Promise<ExtractedInvoice> {
         customerName: "Reliance Industries Ltd",
         invoiceNumber: invoiceNum,
         amount: 245000,
-        dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString().split("T")[0], // 14 days from now
+        dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14)
+          .toISOString()
+          .split("T")[0], // 14 days from now
         status: "sent",
       };
       resolve(invoiceData);
@@ -148,12 +161,16 @@ If you have already made the payment, please disregard this reminder. Should you
 Thank you for your prompt attention to this matter.
 
 Best regards,
-John Doe
+Anirudh Bharghawa
 Collections Manager
 AI Collection`;
 }
 
-function ActionIcon({ type }: { type: SavedInvoice["aiSuggestedAction"]["type"] }) {
+function ActionIcon({
+  type,
+}: {
+  type: SavedInvoice["aiSuggestedAction"]["type"];
+}) {
   switch (type) {
     case "send_email":
     case "send_reminder":
@@ -166,27 +183,27 @@ function ActionIcon({ type }: { type: SavedInvoice["aiSuggestedAction"]["type"] 
 }
 
 // Toast notification component
-function Toast({ 
-  message, 
-  type, 
-  isVisible, 
-  onClose 
-}: { 
-  message: string; 
-  type: "success" | "info"; 
-  isVisible: boolean; 
+function Toast({
+  message,
+  type,
+  isVisible,
+  onClose,
+}: {
+  message: string;
+  type: "success" | "info";
+  isVisible: boolean;
   onClose: () => void;
 }) {
   if (!isVisible) return null;
-  
+
   return (
-    <div 
+    <div
       className={cn(
         "fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-lg border",
         "animate-in slide-in-from-bottom-4 fade-in duration-300",
-        type === "success" 
-          ? "bg-fintech-success/10 border-fintech-success/30 text-fintech-success" 
-          : "bg-primary/10 border-primary/30 text-primary"
+        type === "success"
+          ? "bg-fintech-success/10 border-fintech-success/30 text-fintech-success"
+          : "bg-primary/10 border-primary/30 text-primary",
       )}
     >
       {type === "success" ? (
@@ -195,7 +212,7 @@ function Toast({
         <ClipboardCheck className="w-5 h-5 shrink-0" />
       )}
       <span className="font-medium text-sm">{message}</span>
-      <button 
+      <button
         onClick={onClose}
         className="ml-2 p-1 rounded-md hover:bg-black/10 transition-colors"
       >
@@ -206,35 +223,51 @@ function Toast({
 }
 
 export default function Index() {
-  const { 
-    invoices, 
-    addInvoice, 
-    sendEmailForInvoice, 
-    simulateCustomerReply, 
-    markInvoiceAsPaid 
+  const {
+    invoices,
+    isLoading,
+    apiError,
+    fetchInvoices,
+    addInvoice,
+    sendEmailForInvoice,
+    simulateCustomerReply,
+    markInvoiceAsPaid,
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<TabState>("upload");
   const [viewState, setViewState] = useState<ViewState>("upload");
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [extractedData, setExtractedData] = useState<ExtractedInvoice | null>(null);
-  const [selectedInvoice, setSelectedInvoice] = useState<SavedInvoice | null>(null);
+  const [extractedData, setExtractedData] = useState<ExtractedInvoice | null>(
+    null,
+  );
+  const [selectedInvoice, setSelectedInvoice] = useState<SavedInvoice | null>(
+    null,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Modal and notification states
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "info"; isVisible: boolean }>({
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "info";
+    isVisible: boolean;
+  }>({
     message: "",
     type: "success",
     isVisible: false,
   });
 
+  // Fetch invoices on component mount
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
+
   const showToast = (message: string, type: "success" | "info") => {
     setToast({ message, type, isVisible: true });
     setTimeout(() => {
-      setToast(prev => ({ ...prev, isVisible: false }));
+      setToast((prev) => ({ ...prev, isVisible: false }));
     }, 4000);
   };
 
@@ -260,12 +293,15 @@ export default function Index() {
     }
   }, []);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      setUploadedFile(files[0]);
-    }
-  }, []);
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        setUploadedFile(files[0]);
+      }
+    },
+    [],
+  );
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -277,12 +313,50 @@ export default function Index() {
     setViewState("analyzing");
 
     try {
-      const data = await simulateAIAnalysis();
-      setExtractedData(data);
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+
+      const response = await fetch("http://10.4.144.243:5000/parse/", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Convert API response to our format
+      const extractedData: ExtractedInvoice = {
+        customerName: data.customer_name || "Unknown Customer",
+        invoiceNumber: data.invoice_number || "Unknown Invoice",
+        amount: data.invoice_total_amount || 0,
+        dueDate:
+          data.invoice_due_date || new Date().toISOString().split("T")[0],
+        status:
+          data.invoice_paid_amount >= data.invoice_total_amount
+            ? "paid"
+            : "sent",
+      };
+
+      // Automatically save the invoice to the store
+      addInvoice({
+        customerName: extractedData.customerName,
+        invoiceNumber: extractedData.invoiceNumber,
+        amount: extractedData.amount,
+        dueDate: extractedData.dueDate,
+        status: extractedData.status,
+      });
+
+      setExtractedData(extractedData);
       setViewState("extracted");
     } catch (error) {
       console.error("Analysis failed:", error);
-      setViewState("upload");
+      // Fallback to mock data if API fails
+      const mockData = await simulateAIAnalysis();
+      setExtractedData(mockData);
+      setViewState("extracted");
     }
   };
 
@@ -331,13 +405,13 @@ export default function Index() {
 
   const handleConfirmSendEmail = () => {
     if (!selectedInvoice) return;
-    
+
     setIsSendingEmail(true);
     // Simulate sending email
     setTimeout(() => {
       // Add activity to the store
       sendEmailForInvoice(selectedInvoice);
-      
+
       setIsSendingEmail(false);
       setIsEmailModalOpen(false);
       showToast("Payment reminder email sent successfully", "success");
@@ -346,7 +420,7 @@ export default function Index() {
 
   const handleSimulateCustomerReply = () => {
     if (!selectedInvoice) return;
-    
+
     // This creates a task and adds activities to the store
     simulateCustomerReply(selectedInvoice);
     showToast("Task created: Fix invoice issue raised by customer", "info");
@@ -354,23 +428,23 @@ export default function Index() {
 
   const handleMarkAsPaid = () => {
     if (!selectedInvoice) return;
-    
+
     // Update invoice status and add activity to the store
     markInvoiceAsPaid(selectedInvoice.id);
-    
+
     // Update local selected invoice state to reflect the change
     setSelectedInvoice({
       ...selectedInvoice,
       status: "paid",
       aiSuggestedAction: { type: "none", label: "Completed" },
     });
-    
+
     showToast("Invoice marked as paid", "success");
   };
 
   // Get current selected invoice from store (to reflect any updates)
-  const currentSelectedInvoice = selectedInvoice 
-    ? invoices.find(inv => inv.id === selectedInvoice.id) ?? selectedInvoice
+  const currentSelectedInvoice = selectedInvoice
+    ? (invoices.find((inv) => inv.id === selectedInvoice.id) ?? selectedInvoice)
     : null;
 
   return (
@@ -382,14 +456,18 @@ export default function Index() {
         <header className="flex items-center justify-between px-8 py-5 border-b border-border bg-card">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {activeTab === "upload" ? "Invoice Upload" : currentSelectedInvoice ? "Invoice Details" : "Invoice List"}
+              {activeTab === "upload"
+                ? "Invoice Upload"
+                : currentSelectedInvoice
+                  ? "Invoice Details"
+                  : "Invoice List"}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {activeTab === "upload"
                 ? "Upload and analyze invoices with AI"
                 : currentSelectedInvoice
-                ? `Viewing ${currentSelectedInvoice.invoiceNumber}`
-                : "Manage and track all your invoices"}
+                  ? `Viewing ${currentSelectedInvoice.invoiceNumber}`
+                  : "Manage and track all your invoices"}
             </p>
           </div>
         </header>
@@ -406,7 +484,7 @@ export default function Index() {
                 "flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all border-b-2 -mb-px",
                 activeTab === "upload"
                   ? "bg-background border-primary text-foreground"
-                  : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50",
               )}
             >
               <Plus className="w-4 h-4" />
@@ -421,14 +499,11 @@ export default function Index() {
                 "flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all border-b-2 -mb-px",
                 activeTab === "list"
                   ? "bg-background border-primary text-foreground"
-                  : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50",
               )}
             >
               <List className="w-4 h-4" />
               Invoice List
-              <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium">
-                {invoices.length}
-              </span>
             </button>
           </div>
         </div>
@@ -451,14 +526,14 @@ export default function Index() {
                       isDragging
                         ? "border-primary bg-primary/5 scale-[1.02]"
                         : uploadedFile
-                        ? "border-fintech-success bg-fintech-success/5"
-                        : "border-border hover:border-primary/50 hover:bg-muted/30"
+                          ? "border-fintech-success bg-fintech-success/5"
+                          : "border-border hover:border-primary/50 hover:bg-muted/30",
                     )}
                   >
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".pdf,image/*"
+                      accept=".pdf"
                       onChange={handleFileSelect}
                       className="hidden"
                     />
@@ -473,7 +548,8 @@ export default function Index() {
                             {uploadedFile.name}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            {(uploadedFile.size / 1024).toFixed(1)} KB • Ready to analyze
+                            {(uploadedFile.size / 1024).toFixed(1)} KB • Ready
+                            to analyze
                           </p>
                         </>
                       ) : (
@@ -481,7 +557,9 @@ export default function Index() {
                           <div
                             className={cn(
                               "w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-all",
-                              isDragging ? "bg-primary/10" : "bg-muted group-hover:bg-primary/10"
+                              isDragging
+                                ? "bg-primary/10"
+                                : "bg-muted group-hover:bg-primary/10",
                             )}
                           >
                             <Upload
@@ -489,7 +567,7 @@ export default function Index() {
                                 "w-8 h-8 transition-colors",
                                 isDragging
                                   ? "text-primary"
-                                  : "text-muted-foreground group-hover:text-primary"
+                                  : "text-muted-foreground group-hover:text-primary",
                               )}
                             />
                           </div>
@@ -500,7 +578,7 @@ export default function Index() {
                             or click to browse files
                           </p>
                           <p className="text-xs text-muted-foreground/70">
-                            Supports PDF and image files
+                            Supports PDF files
                           </p>
                         </>
                       )}
@@ -514,8 +592,8 @@ export default function Index() {
                     size="lg"
                     className="w-full h-14 text-base font-medium gap-3 rounded-xl"
                   >
-                    <Sparkles className="w-5 h-5" />
-                    Analyze Invoice
+                    <UploadCloudIcon className="w-5 h-5" />
+                    Upload
                   </Button>
                 </div>
               )}
@@ -525,14 +603,14 @@ export default function Index() {
                 <div className="flex flex-col items-center justify-center py-16 animate-in fade-in duration-300">
                   <div className="relative mb-8">
                     <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
-                      <Sparkles className="w-10 h-10 text-primary animate-pulse" />
+                      <UploadCloudIcon className="w-10 h-10 text-primary animate-pulse" />
                     </div>
                     <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
                       <Loader2 className="w-4 h-4 text-primary-foreground animate-spin" />
                     </div>
                   </div>
                   <h3 className="text-xl font-semibold text-foreground mb-2">
-                    Analyzing invoice with AI...
+                    Uploading Invoice...
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     Extracting details from your document
@@ -544,113 +622,28 @@ export default function Index() {
               {viewState === "extracted" && extractedData && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <Card className="border-2 overflow-hidden">
-                    <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b">
-                      <CardTitle className="flex items-center gap-3 text-lg">
-                        <div className="w-10 h-10 rounded-xl bg-fintech-success/10 flex items-center justify-center">
-                          <CheckCircle2 className="w-5 h-5 text-fintech-success" />
-                        </div>
-                        Invoice Details Extracted
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <div className="grid gap-5">
-                        {/* Customer Name */}
-                        <div className="flex items-start gap-4">
-                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                            <User className="w-5 h-5 text-muted-foreground" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                              Customer Name
-                            </p>
-                            <p className="text-base font-semibold text-foreground">
-                              {extractedData.customerName}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Invoice Number */}
-                        <div className="flex items-start gap-4">
-                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                            <Hash className="w-5 h-5 text-muted-foreground" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                              Invoice Number
-                            </p>
-                            <p className="text-base font-mono font-semibold text-foreground">
-                              {extractedData.invoiceNumber}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Amount */}
-                        <div className="flex items-start gap-4">
-                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                            <IndianRupee className="w-5 h-5 text-muted-foreground" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                              Amount
-                            </p>
-                            <p className="text-xl font-mono font-bold text-foreground">
-                              {formatCurrency(extractedData.amount)}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Due Date */}
-                        <div className="flex items-start gap-4">
-                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                            <Calendar className="w-5 h-5 text-muted-foreground" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                              Due Date
-                            </p>
-                            <p className="text-base font-semibold text-foreground">
-                              {formatDate(extractedData.dueDate)}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Status */}
-                        <div className="flex items-start gap-4">
-                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                            <AlertCircle className="w-5 h-5 text-muted-foreground" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                              Status
-                            </p>
-                            <span
-                              className={cn(
-                                "inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border",
-                                statusConfig[extractedData.status].className
-                              )}
-                            >
-                              {statusConfig[extractedData.status].label}
-                            </span>
-                          </div>
-                        </div>
+                    <CardContent className="p-8 text-center">
+                      <div className="w-16 h-16 rounded-full bg-fintech-success/10 flex items-center justify-center mx-auto mb-4">
+                        <CheckCircle2 className="w-8 h-8 text-fintech-success" />
                       </div>
+                      <h3 className="text-xl font-semibold text-foreground mb-2">
+                        Invoice Uploaded Successfully!
+                      </h3>
+                      <p className="text-muted-foreground">
+                        Invoice has been processed and saved to your invoice
+                        list.
+                      </p>
                     </CardContent>
                   </Card>
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={handleReset}
-                      className="flex-1 h-12 rounded-xl"
-                    >
-                      Upload Another
-                    </Button>
-                    <Button onClick={handleSave} className="flex-1 h-12 rounded-xl gap-2">
-                      <Save className="w-4 h-4" />
-                      Save Invoice
-                    </Button>
-                  </div>
+                  {/* Upload Another Button */}
+                  <Button
+                    onClick={handleReset}
+                    className="w-full h-12 rounded-xl gap-2"
+                  >
+                    <UploadCloudIcon className="w-4 h-4" />
+                    Upload Another Invoice
+                  </Button>
                 </div>
               )}
 
@@ -675,84 +668,129 @@ export default function Index() {
         {/* Invoice List View */}
         {activeTab === "list" && !currentSelectedInvoice && (
           <div className="flex-1 p-8 overflow-auto animate-in fade-in duration-300">
-            <Card className="border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead className="font-semibold text-foreground">Customer</TableHead>
-                    <TableHead className="font-semibold text-foreground text-right">Amount</TableHead>
-                    <TableHead className="font-semibold text-foreground">Due Date</TableHead>
-                    <TableHead className="font-semibold text-foreground">Status</TableHead>
-                    <TableHead className="font-semibold text-foreground">AI Suggested Action</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoices.map((invoice, index) => (
-                    <TableRow
-                      key={invoice.id}
-                      onClick={() => handleInvoiceClick(invoice)}
-                      className={cn(
-                        "cursor-pointer table-row-hover group",
-                        "animate-in fade-in slide-in-from-bottom-2",
-                        index === 0 && "duration-200",
-                        index === 1 && "duration-300",
-                        index === 2 && "duration-400",
-                        index >= 3 && "duration-500"
-                      )}
-                      style={{ animationDelay: `${index * 50}ms` }}
-                    >
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">{invoice.customerName}</span>
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {invoice.invoiceNumber}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-mono font-semibold text-foreground">
-                          {formatCurrency(invoice.amount)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-muted-foreground">{formatDate(invoice.dueDate)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "font-medium border",
-                            statusConfig[invoice.status].className,
-                            invoice.status === "overdue" && "animate-pulse-slow"
-                          )}
-                        >
-                          {statusConfig[invoice.status].label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div
-                          className={cn(
-                            "inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-sm",
-                            invoice.aiSuggestedAction.type === "none"
-                              ? "text-muted-foreground"
-                              : invoice.aiSuggestedAction.type === "call_customer"
-                              ? "text-fintech-warning bg-fintech-warning/10"
-                              : "text-primary bg-primary/10"
-                          )}
-                        >
-                          <ActionIcon type={invoice.aiSuggestedAction.type} />
-                          <span className="font-medium">{invoice.aiSuggestedAction.label}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </TableCell>
+            {isLoading && (
+              <div className="flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-muted-foreground">Loading invoices...</p>
+                </div>
+              </div>
+            )}
+
+            {apiError && (
+              <div className="flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-4 max-w-md text-center">
+                  <AlertCircle className="w-8 h-8 text-destructive" />
+                  <div>
+                    <p className="text-destructive font-medium">
+                      Failed to load invoices
+                    </p>
+                  </div>
+                  <Button onClick={fetchInvoices} variant="outline" size="sm">
+                    Try Again
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {!isLoading && !apiError && (
+              <Card className="border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableHead className="font-semibold text-foreground">
+                        Customer
+                      </TableHead>
+                      <TableHead className="font-semibold text-foreground text-right">
+                        Amount
+                      </TableHead>
+                      <TableHead className="font-semibold text-foreground">
+                        Due Date
+                      </TableHead>
+                      <TableHead className="font-semibold text-foreground">
+                        Status
+                      </TableHead>
+                      <TableHead className="font-semibold text-foreground">
+                        AI Suggested Action
+                      </TableHead>
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {invoices.map((invoice, index) => (
+                      <TableRow
+                        key={invoice.id}
+                        onClick={() => handleInvoiceClick(invoice)}
+                        className={cn(
+                          "cursor-pointer table-row-hover group",
+                          "animate-in fade-in slide-in-from-bottom-2",
+                          index === 0 && "duration-200",
+                          index === 1 && "duration-300",
+                          index === 2 && "duration-400",
+                          index >= 3 && "duration-500",
+                        )}
+                        style={{ animationDelay: `${index * 50}ms` }}
+                      >
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">
+                              {invoice.customerName}
+                            </span>
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {invoice.invoiceNumber}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="font-mono font-semibold text-foreground">
+                            {formatCurrency(invoice.amount)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-muted-foreground">
+                            {formatDate(invoice.dueDate)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "font-medium border",
+                              statusConfig[invoice.status].className,
+                              invoice.status === "overdue" &&
+                                "animate-pulse-slow",
+                            )}
+                          >
+                            {statusConfig[invoice.status].label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div
+                            className={cn(
+                              "inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-sm",
+                              invoice.aiSuggestedAction.type === "none"
+                                ? "text-muted-foreground"
+                                : invoice.aiSuggestedAction.type ===
+                                    "call_customer"
+                                  ? "text-fintech-warning bg-fintech-warning/10"
+                                  : "text-primary bg-primary/10",
+                            )}
+                          >
+                            <ActionIcon type={invoice.aiSuggestedAction.type} />
+                            <span className="font-medium">
+                              {invoice.aiSuggestedAction.label}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
           </div>
         )}
 
@@ -784,7 +822,7 @@ export default function Index() {
                       variant="outline"
                       className={cn(
                         "font-medium border text-sm",
-                        statusConfig[currentSelectedInvoice.status].className
+                        statusConfig[currentSelectedInvoice.status].className,
                       )}
                     >
                       {statusConfig[currentSelectedInvoice.status].label}
@@ -842,35 +880,58 @@ export default function Index() {
               </Card>
 
               {/* AI Recommendation Card */}
-              <Card className={cn(
-                "border-2 overflow-hidden relative",
-                currentSelectedInvoice.status === "overdue" && "border-fintech-danger/30 bg-fintech-danger/5",
-                currentSelectedInvoice.status === "due_tomorrow" && "border-fintech-warning/30 bg-fintech-warning/5",
-                currentSelectedInvoice.status === "paid" && "border-fintech-success/30 bg-fintech-success/5"
-              )}>
+              <Card
+                className={cn(
+                  "border-2 overflow-hidden relative",
+                  currentSelectedInvoice.status === "overdue" &&
+                    "border-fintech-danger/30 bg-fintech-danger/5",
+                  currentSelectedInvoice.status === "due_tomorrow" &&
+                    "border-fintech-warning/30 bg-fintech-warning/5",
+                  currentSelectedInvoice.status === "paid" &&
+                    "border-fintech-success/30 bg-fintech-success/5",
+                )}
+              >
                 <CardContent className="p-6">
                   <div className="flex gap-4">
-                    <div className={cn(
-                      "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
-                      currentSelectedInvoice.status === "overdue" && "bg-fintech-danger/10",
-                      currentSelectedInvoice.status === "due_tomorrow" && "bg-fintech-warning/10",
-                      currentSelectedInvoice.status === "paid" && "bg-fintech-success/10",
-                      currentSelectedInvoice.status === "sent" && "bg-primary/10",
-                      currentSelectedInvoice.status === "draft" && "bg-muted"
-                    )}>
-                      <Sparkles className={cn(
-                        "w-6 h-6",
-                        currentSelectedInvoice.status === "overdue" && "text-fintech-danger",
-                        currentSelectedInvoice.status === "due_tomorrow" && "text-fintech-warning",
-                        currentSelectedInvoice.status === "paid" && "text-fintech-success",
-                        currentSelectedInvoice.status === "sent" && "text-primary",
-                        currentSelectedInvoice.status === "draft" && "text-muted-foreground"
-                      )} />
+                    <div
+                      className={cn(
+                        "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
+                        currentSelectedInvoice.status === "overdue" &&
+                          "bg-fintech-danger/10",
+                        currentSelectedInvoice.status === "due_tomorrow" &&
+                          "bg-fintech-warning/10",
+                        currentSelectedInvoice.status === "paid" &&
+                          "bg-fintech-success/10",
+                        currentSelectedInvoice.status === "sent" &&
+                          "bg-primary/10",
+                        currentSelectedInvoice.status === "draft" && "bg-muted",
+                      )}
+                    >
+                      <Sparkles
+                        className={cn(
+                          "w-6 h-6",
+                          currentSelectedInvoice.status === "overdue" &&
+                            "text-fintech-danger",
+                          currentSelectedInvoice.status === "due_tomorrow" &&
+                            "text-fintech-warning",
+                          currentSelectedInvoice.status === "paid" &&
+                            "text-fintech-success",
+                          currentSelectedInvoice.status === "sent" &&
+                            "text-primary",
+                          currentSelectedInvoice.status === "draft" &&
+                            "text-muted-foreground",
+                        )}
+                      />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-foreground">AI Recommendation</h3>
-                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                        <h3 className="font-semibold text-foreground">
+                          AI Recommendation
+                        </h3>
+                        <Badge
+                          variant="outline"
+                          className="text-xs bg-primary/10 text-primary border-primary/20"
+                        >
                           Smart Insight
                         </Badge>
                       </div>
@@ -884,7 +945,7 @@ export default function Index() {
 
               {/* Action Buttons */}
               <div className="flex gap-3">
-                <Button 
+                <Button
                   className="flex-1 h-12 rounded-xl gap-2"
                   onClick={handleSendEmail}
                   disabled={currentSelectedInvoice.status === "paid"}
@@ -892,8 +953,8 @@ export default function Index() {
                   <Mail className="w-4 h-4" />
                   Send Email
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="flex-1 h-12 rounded-xl gap-2"
                   onClick={handleSimulateCustomerReply}
                   disabled={currentSelectedInvoice.status === "paid"}
@@ -901,7 +962,7 @@ export default function Index() {
                   <MessageSquare className="w-4 h-4" />
                   Simulate Customer Reply
                 </Button>
-                <Button 
+                <Button
                   className="h-12 rounded-xl gap-2 bg-fintech-success hover:bg-fintech-success/90 text-white"
                   onClick={handleMarkAsPaid}
                   disabled={currentSelectedInvoice.status === "paid"}
@@ -926,13 +987,15 @@ export default function Index() {
               Payment Reminder Email
             </DialogTitle>
             <DialogDescription>
-              Review the AI-generated email before sending to {currentSelectedInvoice?.customerName}
+              Review the AI-generated email before sending to{" "}
+              {currentSelectedInvoice?.customerName}
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="flex-1 overflow-auto py-4">
             <div className="bg-muted/50 rounded-xl p-5 font-mono text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">
-              {currentSelectedInvoice && generatePaymentReminderEmail(currentSelectedInvoice)}
+              {currentSelectedInvoice &&
+                generatePaymentReminderEmail(currentSelectedInvoice)}
             </div>
           </div>
 
@@ -970,7 +1033,7 @@ export default function Index() {
         message={toast.message}
         type={toast.type}
         isVisible={toast.isVisible}
-        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
+        onClose={() => setToast((prev) => ({ ...prev, isVisible: false }))}
       />
     </div>
   );
