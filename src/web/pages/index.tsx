@@ -68,6 +68,8 @@ interface DetailedInvoice {
   invoice_due_date: string;
   days_until_due: number;
   analysis_reasoning: string;
+  email_subject: string;
+  email_body: string;
 }
 
 type ViewState = "upload" | "analyzing" | "extracted" | "saved" | "error";
@@ -202,7 +204,7 @@ function Toast({
   onClose,
 }: {
   message: string;
-  type: "success" | "info";
+  type: "success" | "info" | "error";
   isVisible: boolean;
   onClose: () => void;
 }) {
@@ -211,15 +213,19 @@ function Toast({
   return (
     <div
       className={cn(
-        "fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl shadow-lg border",
-        "animate-in slide-in-from-bottom-4 fade-in duration-300",
+        "fixed top-6 right-6 z-[9999] flex items-center gap-3 px-5 py-4 rounded-xl shadow-lg border",
+        "animate-in slide-in-from-top-4 fade-in duration-300",
         type === "success"
           ? "bg-fintech-success/10 border-fintech-success/30 text-fintech-success"
-          : "bg-primary/10 border-primary/30 text-primary",
+          : type === "error"
+            ? "bg-fintech-danger/10 border-fintech-danger/30 text-fintech-danger"
+            : "bg-primary/10 border-primary/30 text-primary",
       )}
     >
       {type === "success" ? (
         <CheckCircle2 className="w-5 h-5 shrink-0" />
+      ) : type === "error" ? (
+        <AlertCircle className="w-5 h-5 shrink-0" />
       ) : (
         <ClipboardCheck className="w-5 h-5 shrink-0" />
       )}
@@ -266,9 +272,11 @@ export default function Index() {
   // Modal and notification states
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [isAiSuggestionModalOpen, setIsAiSuggestionModalOpen] = useState(false);
+  const [isSendingAiSuggestion, setIsSendingAiSuggestion] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
-    type: "success" | "info";
+    type: "success" | "info" | "error";
     isVisible: boolean;
   }>({
     message: "",
@@ -281,7 +289,7 @@ export default function Index() {
     fetchInvoices();
   }, [fetchInvoices]);
 
-  const showToast = (message: string, type: "success" | "info") => {
+  const showToast = (message: string, type: "success" | "info" | "error") => {
     setToast({ message, type, isVisible: true });
     setTimeout(() => {
       setToast((prev) => ({ ...prev, isVisible: false }));
@@ -490,6 +498,45 @@ export default function Index() {
     });
 
     showToast("Invoice marked as paid", "success");
+  };
+
+  const handleSendAiSuggestion = async () => {
+    if (!detailedInvoice?.email_subject || !detailedInvoice?.email_body) {
+      showToast("No email content available to send", "info");
+      return;
+    }
+
+    setIsSendingAiSuggestion(true);
+
+    try {
+      const response = await fetch("http://10.4.144.243:5000/email/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: detailedInvoice.email_subject,
+          body: detailedInvoice.email_body,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Email sent successfully:", result);
+      showToast("Email sent successfully", "success");
+    } catch (error) {
+      console.error("Error sending email:", error);
+      showToast(
+        error instanceof Error ? error.message : "Failed to send email",
+        "error",
+      );
+    } finally {
+      setIsSendingAiSuggestion(false);
+      setIsAiSuggestionModalOpen(false);
+    }
   };
 
   // Get current selected invoice from store (to reflect any updates)
@@ -1078,6 +1125,15 @@ export default function Index() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* AI Suggestion Button */}
+                  <Button
+                    onClick={() => setIsAiSuggestionModalOpen(true)}
+                    className="w-full h-12 rounded-xl gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Suggest next action
+                  </Button>
                 </>
               )}
             </div>
@@ -1130,6 +1186,73 @@ export default function Index() {
                 <>
                   <Send className="w-4 h-4" />
                   Send Email
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Suggestion Modal */}
+      <Dialog
+        open={isAiSuggestionModalOpen}
+        onOpenChange={setIsAiSuggestionModalOpen}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-primary" />
+              </div>
+              AI Suggested Action
+            </DialogTitle>
+            <DialogDescription>
+              Review the AI-generated email suggestion for{" "}
+              {detailedInvoice?.customer_name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto py-4 space-y-4">
+            <div>
+              <label className="text-sm font-medium text-foreground mb-2 block">
+                Subject
+              </label>
+              <div className="bg-muted/50 rounded-xl p-4 text-sm font-medium text-foreground/90">
+                {detailedInvoice?.email_subject || "No subject available"}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-foreground mb-2 block">
+                Email Body
+              </label>
+              <div className="bg-muted/50 rounded-xl p-5 text-sm whitespace-pre-wrap leading-relaxed text-foreground/90 min-h-[200px]">
+                {detailedInvoice?.email_body || "No email content available"}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsAiSuggestionModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="gap-2"
+              onClick={handleSendAiSuggestion}
+              disabled={isSendingAiSuggestion}
+            >
+              {isSendingAiSuggestion ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Send
                 </>
               )}
             </Button>
