@@ -58,6 +58,18 @@ interface ExtractedInvoice {
   status: InvoiceStatus;
 }
 
+interface DetailedInvoice {
+  invoice_number: string;
+  customer_name: string;
+  priority: "low" | "medium" | "high";
+  invoice_total_amount: number;
+  invoice_paid_amount: number;
+  outstanding_amount: number;
+  invoice_due_date: string;
+  days_until_due: number;
+  analysis_reasoning: string;
+}
+
 type ViewState = "upload" | "analyzing" | "extracted" | "saved" | "error";
 type TabState = "upload" | "list";
 
@@ -245,6 +257,10 @@ export default function Index() {
   const [selectedInvoice, setSelectedInvoice] = useState<SavedInvoice | null>(
     null,
   );
+  const [detailedInvoice, setDetailedInvoice] =
+    useState<DetailedInvoice | null>(null);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Modal and notification states
@@ -396,8 +412,36 @@ export default function Index() {
     setExtractedData(null);
   };
 
-  const handleInvoiceClick = (invoice: SavedInvoice) => {
+  const handleInvoiceClick = async (invoice: SavedInvoice) => {
     setSelectedInvoice(invoice);
+    setIsLoadingDetails(true);
+    setDetailsError(null);
+    setDetailedInvoice(null);
+
+    try {
+      const response = await fetch(
+        `http://10.4.144.243:5000/analyze/invoice/${invoice.invoiceNumber}`,
+        {
+          method: "POST",
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: DetailedInvoice = await response.json();
+      setDetailedInvoice(data);
+    } catch (error) {
+      console.error("Error fetching invoice details:", error);
+      setDetailsError(
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch invoice details",
+      );
+    } finally {
+      setIsLoadingDetails(false);
+    }
   };
 
   const handleBackToList = () => {
@@ -500,6 +544,7 @@ export default function Index() {
               onClick={() => {
                 setActiveTab("list");
                 setSelectedInvoice(null);
+                fetchInvoices();
               }}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all border-b-2 -mb-px",
@@ -728,14 +773,14 @@ export default function Index() {
             )}
 
             {!isLoading && !apiError && (
-              <Card className="border overflow-hidden">
+              <Card className="border overflow-hidden py-0">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 hover:bg-muted/40">
                       <TableHead className="font-semibold text-foreground">
                         Customer
                       </TableHead>
-                      <TableHead className="font-semibold text-foreground text-right">
+                      <TableHead className="font-semibold text-foreground">
                         Amount
                       </TableHead>
                       <TableHead className="font-semibold text-foreground">
@@ -743,9 +788,6 @@ export default function Index() {
                       </TableHead>
                       <TableHead className="font-semibold text-foreground">
                         Status
-                      </TableHead>
-                      <TableHead className="font-semibold text-foreground">
-                        AI Suggested Action
                       </TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
@@ -775,7 +817,7 @@ export default function Index() {
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell>
                           <span className="font-mono font-semibold text-foreground">
                             {formatCurrency(invoice.amount)}
                           </span>
@@ -799,28 +841,36 @@ export default function Index() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div
-                            className={cn(
-                              "inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-sm",
-                              invoice.aiSuggestedAction.type === "none"
-                                ? "text-muted-foreground"
-                                : invoice.aiSuggestedAction.type ===
-                                    "call_customer"
-                                  ? "text-fintech-warning bg-fintech-warning/10"
-                                  : "text-primary bg-primary/10",
-                            )}
-                          >
-                            <ActionIcon type={invoice.aiSuggestedAction.type} />
-                            <span className="font-medium">
-                              {invoice.aiSuggestedAction.label}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
                           <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                         </TableCell>
                       </TableRow>
                     ))}
+                    {invoices.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-12">
+                          <div className="flex flex-col items-center">
+                            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                              <FileText className="w-8 h-8 text-muted-foreground" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-foreground mb-2">
+                              No invoices found
+                            </h3>
+                            <p className="text-sm text-muted-foreground mb-4">
+                              Upload your first invoice to get started
+                            </p>
+                            <Button
+                              onClick={() => {
+                                setActiveTab("upload");
+                              }}
+                              className="gap-2"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Upload Invoice
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </Card>
@@ -842,169 +892,194 @@ export default function Index() {
                 Back to Invoice List
               </Button>
 
-              {/* Invoice Summary Card */}
-              <Card className="border-2 overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-3 text-lg">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-primary" />
-                      </div>
-                      {currentSelectedInvoice.invoiceNumber}
-                    </CardTitle>
-                    <Badge
+              {/* Loading State */}
+              {isLoadingDetails && (
+                <Card className="border-2 overflow-hidden">
+                  <CardContent className="p-12 text-center">
+                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                      <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-foreground mb-2">
+                      Loading Invoice Details
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Fetching detailed analysis from server...
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Error State */}
+              {detailsError && !isLoadingDetails && (
+                <Card className="border-2 border-fintech-danger/20 overflow-hidden">
+                  <CardContent className="p-12 text-center">
+                    <div className="w-16 h-16 rounded-full bg-fintech-danger/10 flex items-center justify-center mx-auto mb-4">
+                      <AlertCircle className="w-8 h-8 text-fintech-danger" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-foreground mb-2">
+                      Failed to Load Details
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {detailsError}
+                    </p>
+                    <Button
+                      onClick={() => handleInvoiceClick(currentSelectedInvoice)}
                       variant="outline"
-                      className={cn(
-                        "font-medium border text-sm",
-                        statusConfig[currentSelectedInvoice.status].className,
-                      )}
+                      className="gap-2"
                     >
-                      {statusConfig[currentSelectedInvoice.status].label}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <div className="grid gap-6">
-                    {/* Customer Name */}
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                        <User className="w-5 h-5 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                          Customer Name
-                        </p>
-                        <p className="text-base font-semibold text-foreground">
-                          {currentSelectedInvoice.customerName}
-                        </p>
-                      </div>
-                    </div>
+                      Try Again
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
-                    {/* Amount */}
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                        <IndianRupee className="w-5 h-5 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                          Amount
-                        </p>
-                        <p className="text-2xl font-mono font-bold text-foreground">
-                          {formatCurrency(currentSelectedInvoice.amount)}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Due Date */}
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                        <Calendar className="w-5 h-5 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                          Due Date
-                        </p>
-                        <p className="text-base font-semibold text-foreground">
-                          {formatDate(currentSelectedInvoice.dueDate)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* AI Recommendation Card */}
-              <Card
-                className={cn(
-                  "border-2 overflow-hidden relative",
-                  currentSelectedInvoice.status === "overdue" &&
-                    "border-fintech-danger/30 bg-fintech-danger/5",
-                  currentSelectedInvoice.status === "due_tomorrow" &&
-                    "border-fintech-warning/30 bg-fintech-warning/5",
-                  currentSelectedInvoice.status === "paid" &&
-                    "border-fintech-success/30 bg-fintech-success/5",
-                )}
-              >
-                <CardContent className="p-6">
-                  <div className="flex gap-4">
-                    <div
-                      className={cn(
-                        "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
-                        currentSelectedInvoice.status === "overdue" &&
-                          "bg-fintech-danger/10",
-                        currentSelectedInvoice.status === "due_tomorrow" &&
-                          "bg-fintech-warning/10",
-                        currentSelectedInvoice.status === "paid" &&
-                          "bg-fintech-success/10",
-                        currentSelectedInvoice.status === "sent" &&
-                          "bg-primary/10",
-                        currentSelectedInvoice.status === "draft" && "bg-muted",
-                      )}
-                    >
-                      <Sparkles
-                        className={cn(
-                          "w-6 h-6",
-                          currentSelectedInvoice.status === "overdue" &&
-                            "text-fintech-danger",
-                          currentSelectedInvoice.status === "due_tomorrow" &&
-                            "text-fintech-warning",
-                          currentSelectedInvoice.status === "paid" &&
-                            "text-fintech-success",
-                          currentSelectedInvoice.status === "sent" &&
-                            "text-primary",
-                          currentSelectedInvoice.status === "draft" &&
-                            "text-muted-foreground",
-                        )}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-foreground">
-                          AI Recommendation
-                        </h3>
+              {/* Detailed Invoice Data */}
+              {detailedInvoice && !isLoadingDetails && !detailsError && (
+                <>
+                  {/* Invoice Summary Card */}
+                  <Card className="border-2 overflow-hidden py-0">
+                    <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b items-center py-4">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="flex items-center gap-3 text-lg">
+                          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                            <FileText className="w-5 h-5 text-primary" />
+                          </div>
+                          {detailedInvoice.invoice_number}
+                        </CardTitle>
                         <Badge
                           variant="outline"
-                          className="text-xs bg-primary/10 text-primary border-primary/20"
+                          className={cn(
+                            "font-medium border text-sm",
+                            statusConfig[currentSelectedInvoice.status]
+                              .className,
+                          )}
                         >
-                          Smart Insight
+                          {statusConfig[currentSelectedInvoice.status].label}
                         </Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {getAIRecommendationMessage(currentSelectedInvoice)}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <div className="grid gap-6">
+                        {/* Customer Name */}
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                            <User className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Customer Name
+                            </p>
+                            <p className="text-base font-semibold text-foreground">
+                              {detailedInvoice.customer_name}
+                            </p>
+                          </div>
+                        </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-3">
-                <Button
-                  className="flex-1 h-12 rounded-xl gap-2"
-                  onClick={handleSendEmail}
-                  disabled={currentSelectedInvoice.status === "paid"}
-                >
-                  <Mail className="w-4 h-4" />
-                  Send Email
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 h-12 rounded-xl gap-2"
-                  onClick={handleSimulateCustomerReply}
-                  disabled={currentSelectedInvoice.status === "paid"}
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  Simulate Customer Reply
-                </Button>
-                <Button
-                  className="h-12 rounded-xl gap-2 bg-fintech-success hover:bg-fintech-success/90 text-white"
-                  onClick={handleMarkAsPaid}
-                  disabled={currentSelectedInvoice.status === "paid"}
-                >
-                  <CheckCheck className="w-4 h-4" />
-                  Mark as Paid
-                </Button>
-              </div>
+                        {/* Total Amount */}
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                            <IndianRupee className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Total Amount
+                            </p>
+                            <p className="text-2xl font-mono font-bold text-foreground">
+                              {formatCurrency(
+                                detailedInvoice.invoice_total_amount,
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Paid Amount */}
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-fintech-success/10 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-5 h-5 text-fintech-success" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Paid Amount
+                            </p>
+                            <p className="text-xl font-mono font-semibold text-fintech-success">
+                              {formatCurrency(
+                                detailedInvoice.invoice_paid_amount,
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Outstanding Amount */}
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-fintech-warning/10 flex items-center justify-center shrink-0">
+                            <AlertCircle className="w-5 h-5 text-fintech-warning" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Outstanding Amount
+                            </p>
+                            <p className="text-xl font-mono font-semibold text-fintech-warning">
+                              {formatCurrency(
+                                detailedInvoice.outstanding_amount,
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Due Date */}
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                            <Calendar className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Due Date
+                            </p>
+                            <p className="text-base font-semibold text-foreground">
+                              {formatDate(detailedInvoice.invoice_due_date)}
+                            </p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {detailedInvoice.days_until_due > 0
+                                ? `${detailedInvoice.days_until_due} days remaining`
+                                : detailedInvoice.days_until_due === 0
+                                  ? "Due today"
+                                  : `${Math.abs(detailedInvoice.days_until_due)} days overdue`}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Priority */}
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                            <Hash className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Priority
+                            </p>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "font-medium border",
+                                detailedInvoice.priority === "high"
+                                  ? "bg-fintech-danger/10 text-fintech-danger border-fintech-danger/20"
+                                  : detailedInvoice.priority === "medium"
+                                    ? "bg-fintech-warning/10 text-fintech-warning border-fintech-warning/20"
+                                    : "bg-muted text-muted-foreground border-border",
+                              )}
+                            >
+                              {detailedInvoice.priority
+                                .charAt(0)
+                                .toUpperCase() +
+                                detailedInvoice.priority.slice(1)}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </div>
           </div>
         )}
